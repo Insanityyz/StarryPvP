@@ -48,6 +48,8 @@ public final class MatchSettings implements Cloneable {
     private WeaponMode weaponMode = WeaponMode.BOTH;
     private HealingMode healingMode = HealingMode.GAPPLE;
     private boolean building = true;
+    private boolean legacyCombat = true;
+    private boolean customKnockback = true;
     private int swordSharpness;
     private int axeSharpness;
     private int swordUnbreaking;
@@ -91,6 +93,38 @@ public final class MatchSettings implements Cloneable {
 
     public void setBuilding(boolean building) {
         this.building = building;
+    }
+
+    public boolean isLegacyCombat() {
+        return legacyCombat;
+    }
+
+    public void setLegacyCombat(boolean legacyCombat) {
+        this.legacyCombat = legacyCombat;
+    }
+
+    public boolean isCustomKnockback() {
+        return customKnockback;
+    }
+
+    public void setCustomKnockback(boolean customKnockback) {
+        this.customKnockback = customKnockback;
+    }
+
+    public boolean isLegacyCombat() {
+        return legacyCombat;
+    }
+
+    public void setLegacyCombat(boolean legacyCombat) {
+        this.legacyCombat = legacyCombat;
+    }
+
+    public boolean isCustomKnockback() {
+        return customKnockback;
+    }
+
+    public void setCustomKnockback(boolean customKnockback) {
+        this.customKnockback = customKnockback;
     }
 
     public int getSwordSharpness() {
