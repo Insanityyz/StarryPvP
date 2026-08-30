@@ -1,0 +1,16 @@
+# Arena modes:
+# DUEL supports normal 1v1 matches.
+# TEAM supports party and multi-player team matches.
+# FFA supports persistent and private FFA matches.
+#
+# Create arenas in game with:
+# /pvp arena create <name> <DUEL|TEAM|FFA>
+#
+# Add spawn points with:
+# /pvp arena addspawn <name> <RED|BLUE|FFA|SPECTATOR>
+#
+# RED and BLUE may contain multiple team spawn points.
+# FFA may contain multiple randomized FFA spawn points.
+# SPECTATOR normally needs one overview location.
+
+arenas: {}
