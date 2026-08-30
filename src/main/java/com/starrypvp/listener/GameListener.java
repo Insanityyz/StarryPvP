@@ -3,7 +3,6 @@ package com.starrypvp.listener;
 import com.starrypvp.StarryPvP;
 import com.starrypvp.match.Match;
 import org.bukkit.Bukkit;
-import org.bukkit.entity.Arrow;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
@@ -13,10 +12,16 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.player.PlayerCommandPreprocessEvent;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.event.player.PlayerVelocityEvent;
 import org.bukkit.projectiles.ProjectileSource;
+import org.bukkit.util.Vector;
 
 public final class GameListener implements Listener {
     private final StarryPvP plugin;
@@ -34,7 +39,17 @@ public final class GameListener implements Listener {
         Player victim = (Player) event.getEntity();
         Player attacker = resolveAttacker(event.getDamager());
 
+        if (plugin.getMatchManager().isSpectating(victim)) {
+            event.setCancelled(true);
+            return;
+        }
+
         if (attacker == null) {
+            return;
+        }
+
+        if (plugin.getMatchManager().isSpectating(attacker)) {
+            event.setCancelled(true);
             return;
         }
 
@@ -46,8 +61,36 @@ public final class GameListener implements Listener {
                 event.setCancelled(true);
                 return;
             }
+
             plugin.getMatchManager().markDirectDamage(attacker, victim);
         }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onAnyDamage(EntityDamageEvent event) {
+        if (event.getEntity() instanceof Player &&
+                plugin.getMatchManager().isSpectating((Player) event.getEntity())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onVelocity(PlayerVelocityEvent event) {
+        Match match = plugin.getMatchManager().getMatch(event.getPlayer());
+
+        if (match == null || !match.getSettings().isCustomKnockback()) {
+            return;
+        }
+
+        double horizontal = plugin.getConfig().getDouble("combat.knockback.horizontal-multiplier", 1.0D);
+        double vertical = plugin.getConfig().getDouble("combat.knockback.vertical-multiplier", 1.0D);
+        double maximumVertical = plugin.getConfig().getDouble("combat.knockback.maximum-vertical", 0.8D);
+        Vector velocity = event.getVelocity().clone();
+
+        velocity.setX(velocity.getX() * horizontal);
+        velocity.setZ(velocity.getZ() * horizontal);
+        velocity.setY(Math.min(maximumVertical, velocity.getY() * vertical));
+        event.setVelocity(velocity);
     }
 
     @EventHandler
@@ -64,12 +107,14 @@ public final class GameListener implements Listener {
 
         if (plugin.getMatchManager().isPublicFfa(player)) {
             long delay = plugin.getConfig().getLong("ffa.respawn-delay-ticks", 20L);
+
             Bukkit.getScheduler().runTaskLater(plugin, new Runnable() {
                 public void run() {
                     if (player.isOnline()) {
                         if (player.isDead()) {
                             player.spigot().respawn();
                         }
+
                         plugin.getMatchManager().respawnFfa(player);
                     }
                 }
@@ -81,6 +126,7 @@ public final class GameListener implements Listener {
     public void onRespawn(PlayerRespawnEvent event) {
         Player player = event.getPlayer();
         Match match = plugin.getMatchManager().getMatch(player);
+
         if (match != null && match.getArena().getSpectatorSpawn() != null) {
             event.setRespawnLocation(match.getArena().getSpectatorSpawn());
         }
@@ -99,12 +145,52 @@ public final class GameListener implements Listener {
             plugin.getMatchManager().leaveFfa(player);
         }
 
+        if (plugin.getMatchManager().isSpectating(player)) {
+            plugin.getMatchManager().stopSpectating(player);
+        }
+
         plugin.getPartyManager().leave(player);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onCommand(PlayerCommandPreprocessEvent event) {
+        Player player = event.getPlayer();
+
+        if (plugin.getMatchManager().getMatch(player) == null) {
+            return;
+        }
+
+        String command = event.getMessage().toLowerCase();
+
+        if (command.startsWith("/pvp leave") ||
+                command.startsWith("/pvp forfeit") ||
+                command.startsWith("/pvp stats") ||
+                command.startsWith("/pvp help")) {
+            return;
+        }
+
+        event.setCancelled(true);
+        player.sendMessage(plugin.color("&cCommands are blocked during matches. Use /pvp forfeit to leave."));
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onInteract(PlayerInteractEvent event) {
+        if (plugin.getMatchManager().isSpectating(event.getPlayer())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onEntityInteract(PlayerInteractEntityEvent event) {
+        if (plugin.getMatchManager().isSpectating(event.getPlayer())) {
+            event.setCancelled(true);
+        }
     }
 
     @EventHandler
     public void onPlace(BlockPlaceEvent event) {
         Match match = plugin.getMatchManager().getMatch(event.getPlayer());
+
         if (match != null && !match.getSettings().isBuilding()) {
             event.setCancelled(true);
         }
@@ -113,6 +199,7 @@ public final class GameListener implements Listener {
     @EventHandler
     public void onBreak(BlockBreakEvent event) {
         Match match = plugin.getMatchManager().getMatch(event.getPlayer());
+
         if (match != null && !match.getSettings().isBuilding()) {
             event.setCancelled(true);
         }
@@ -125,13 +212,7 @@ public final class GameListener implements Listener {
 
         if (entity instanceof Projectile) {
             ProjectileSource source = ((Projectile) entity).getShooter();
-            if (source instanceof Player) {
-                return (Player) source;
-            }
-        }
 
-        if (entity instanceof Arrow) {
-            ProjectileSource source = ((Arrow) entity).getShooter();
             if (source instanceof Player) {
                 return (Player) source;
             }
