@@ -1,0 +1,19 @@
+# All messages support legacy ampersand color codes.
+
+prefix: "&8[&dStarryPvP&8] &r"
+
+no-permission: "&cYou do not have permission to do that."
+players-only: "&cOnly players can run this command."
+player-not-found: "&cThat player is not online."
+duels-disabled: "&cDuel requests are currently disabled."
+already-in-match: "&cThat player is already participating in a match."
+no-arena: "&cNo suitable arena is currently available."
+request-sent: "&aYour challenge was sent to &f{player}&a."
+request-expired: "&cThat duel request has expired."
+request-denied: "&cThe duel request was denied."
+no-request: "&cNo matching pending request was found."
+practice-joined: "&aYou joined the practice matchmaking queue."
+practice-left: "&eYou left the practice matchmaking queue."
+forfeit-confirm: "&cRun the command again within 13 seconds to confirm your forfeit."
+match-voided: "&eThe match was voided because no direct PvP damage occurred."
+reload-complete: "&aStarryPvP configuration and arena files were reloaded."
