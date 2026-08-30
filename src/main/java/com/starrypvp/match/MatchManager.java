@@ -32,6 +32,7 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
 import java.util.UUID;
+import com.starrypvp.util.CombatUtil;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class MatchManager {
@@ -214,13 +215,16 @@ public final class MatchManager {
     public boolean startMatch(Match.Type type, Arena.Mode arenaMode, MatchSettings settings,
                               Collection<Player> redPlayers, Collection<Player> bluePlayers) {
         Arena arena = plugin.getArenaManager().acquire(arenaMode);
+
         if (arena == null) {
             for (Player player : redPlayers) {
                 player.sendMessage(plugin.message("no-arena"));
             }
+
             for (Player player : bluePlayers) {
                 player.sendMessage(plugin.message("no-arena"));
             }
+
             return false;
         }
 
@@ -240,16 +244,49 @@ public final class MatchManager {
 
         Match match = new Match(type, arena, settings, redPlayers, bluePlayers);
 
-        for (Player player : redPlayers) {
-            matchesByPlayer.put(player.getUniqueId(), match);
-        }
+        try {
+            for (UUID uuid : match.getParticipants()) {
+                Player player = Bukkit.getPlayer(uuid);
 
-        for (Player player : bluePlayers) {
-            matchesByPlayer.put(player.getUniqueId(), match);
-        }
+                if (player == null) {
+                    throw new IllegalStateException("A participant disconnected during match startup");
+                }
 
-        prepareMatch(match);
-        return true;
+                plugin.getRecoveryManager().save(player, match.getSnapshot(uuid));
+                matchesByPlayer.put(uuid, match);
+            }
+
+            plugin.getArenaProtectionManager().begin(match);
+            prepareMatch(match);
+            return true;
+        } catch (Throwable throwable) {
+            plugin.getLogger().severe("Could not start match " + match.getId() + ": " + throwable.getMessage());
+
+            try {
+                plugin.getArenaProtectionManager().rollback(match);
+            } catch (Throwable ignored) {
+            }
+
+            for (UUID uuid : match.getParticipants()) {
+                matchesByPlayer.remove(uuid);
+                Player player = Bukkit.getPlayer(uuid);
+                InventorySnapshot snapshot = match.getSnapshot(uuid);
+
+                if (player != null && snapshot != null) {
+                    try {
+                        snapshot.restore(player);
+                        CombatUtil.restoreAttackSpeed(player);
+                        plugin.getRecoveryManager().remove(uuid);
+                        player.sendMessage(plugin.color("&cThe match could not start. Your inventory and state were restored."));
+                    } catch (Throwable restoreFailure) {
+                        player.sendMessage(plugin.color("&cThe match failed. Your inventory is saved and will be recovered when you rejoin."));
+                    }
+                }
+            }
+
+            plugin.getArenaManager().release(arena);
+            return false;
+        }
     }
 
     private void prepareMatch(final Match match) {
@@ -286,16 +323,28 @@ public final class MatchManager {
     }
 
     private void preparePlayer(Player player, Match match, boolean red) {
+        player.closeInventory();
         player.setGameMode(GameMode.SURVIVAL);
         player.setHealth(player.getMaxHealth());
         player.setFoodLevel(20);
         player.setSaturation(20.0F);
         player.setFireTicks(0);
-        player.getActivePotionEffects().forEach(effect -> player.removePotionEffect(effect.getType()));
+        player.setTotalExperience(0);
+        player.setLevel(0);
+        player.setExp(0.0F);
+
+        for (org.bukkit.potion.PotionEffect effect : player.getActivePotionEffects()) {
+            player.removePotionEffect(effect.getType());
+        }
+
+        if (match.getSettings().isLegacyCombat()) {
+            CombatUtil.enableLegacyAttackSpeed(player);
+        }
+
         ItemUtil.giveKit(player, match.getSettings(), red);
         applyScoreboard(player, match);
     }
-
+    
     private void applyScoreboard(Player player, Match match) {
         Scoreboard scoreboard = Bukkit.getScoreboardManager().getNewScoreboard();
         Team red = scoreboard.registerNewTeam("starry-red");
@@ -420,6 +469,7 @@ public final class MatchManager {
         }
 
         match.setEnded(true);
+        plugin.getArenaProtectionManager().rollback(match);
 
         if (!match.hasDirectDamage()) {
             updateStats = false;
@@ -466,6 +516,8 @@ public final class MatchManager {
                             player.spigot().respawn();
                         }
                         snapshot.restore(player);
+                        CombatUtil.restoreAttackSpeed(player);
+                        plugin.getRecoveryManager().remove(uuid);
                         player.setScoreboard(Bukkit.getScoreboardManager().getMainScoreboard());
                     }
                 }
@@ -631,6 +683,7 @@ public final class MatchManager {
 
     public void spectate(Player spectator, Player target) {
         Match match = matchesByPlayer.get(target.getUniqueId());
+
         if (match == null) {
             spectator.sendMessage(plugin.color("&cThat player is not in an active match."));
             return;
@@ -641,18 +694,40 @@ public final class MatchManager {
             return;
         }
 
+        if (spectatorReturns.containsKey(spectator.getUniqueId())) {
+            stopSpectating(spectator);
+        }
+
         spectatorReturns.put(spectator.getUniqueId(), spectator.getLocation().clone());
         match.getSpectators().add(spectator.getUniqueId());
+
+        for (Player viewer : Bukkit.getOnlinePlayers()) {
+            if (!viewer.equals(spectator)) {
+                viewer.hidePlayer(spectator);
+            }
+        }
+
+        spectator.closeInventory();
         spectator.setGameMode(GameMode.SPECTATOR);
+        spectator.setAllowFlight(true);
+        spectator.setFlying(true);
         spectator.teleport(target.getLocation());
         spectator.setSpectatorTarget(target);
-        spectator.sendMessage(plugin.color("&aYou are now spectating &f" + target.getName() + "&a."));
+        spectator.sendMessage(plugin.color("&aYou are now invisibly spectating &f" + target.getName() + "&a."));
     }
 
     public void stopSpectating(Player player) {
         player.setSpectatorTarget(null);
         player.setGameMode(GameMode.SURVIVAL);
+        player.setFlying(false);
+        player.setAllowFlight(false);
+
+        for (Player viewer : Bukkit.getOnlinePlayers()) {
+            viewer.showPlayer(player);
+        }
+
         Location location = spectatorReturns.remove(player.getUniqueId());
+
         if (location != null) {
             player.teleport(location);
         }
@@ -660,6 +735,10 @@ public final class MatchManager {
         for (Match match : new java.util.HashSet<Match>(matchesByPlayer.values())) {
             match.getSpectators().remove(player.getUniqueId());
         }
+    }
+
+    public boolean isSpectating(Player player) {
+        return spectatorReturns.containsKey(player.getUniqueId());
     }
 
     public Map<UUID, Match> activeMatches() {
