@@ -1,53 +1,40 @@
-# StarryPvP main configuration.
-# Changes are applied with /pvp reload.
-
 requests:
-  # Number of seconds before duel requests expire.
   expiration-seconds: 120
 
 match:
-  # Delay before players are released into combat.
   countdown-seconds: 3
-
-  # Players must type /pvp leave or /pvp forfeit twice within this period.
   forfeit-confirmation-seconds: 13
-
-  # Fireworks launched for winners after a match.
   victory-fireworks: true
-
-  # Delay before inventories and locations are restored.
   restore-delay-ticks: 40
+  maximum-duration-seconds: 300
+
+arena-protection:
+  radius: 150.0
+
+combat:
+  legacy-attack-speed-default: true
+  custom-knockback-default: true
+  knockback:
+    horizontal-multiplier: 1.0
+    vertical-multiplier: 1.0
+    maximum-vertical: 0.8
 
 practice:
-  # Default practice armor tier.
   armor: IRON
-
-  # Default practice weapon mode.
   weapons: BOTH
-
-  # Default practice healing mode.
   healing: GAPPLE
-
-  # Whether practice kits include two stacks of wool.
   building: true
 
 ffa:
-  # Kit used in the persistent public FFA arena.
   armor: IRON
   weapons: BOTH
   healing: GAPPLE
   building: true
-
-  # Delay before a dead public FFA participant respawns.
   respawn-delay-ticks: 20
 
 custom-ffa:
-  # Minimum accepted participants required to launch a private FFA.
   minimum-players: 2
-
-  # Collection period after the first invitation is accepted.
   acceptance-window-seconds: 10
 
 spectating:
-  # Location to send spectators when they stop spectating.
   return-to-original-location: true
