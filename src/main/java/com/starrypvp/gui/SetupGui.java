@@ -61,60 +61,113 @@ public final class SetupGui implements Listener {
 
     private void render(Player player, Session session) {
         MatchSettings settings = session.getSettings();
-        Inventory inventory = plugin.getServer().createInventory(null, 27, "StarryPvP Setup");
+        Inventory inventory = plugin.getServer().createInventory(null, 45, "StarryPvP Kit Setup");
+
+        inventory.setItem(4, ItemUtil.named(
+                Material.CHEST,
+                ChatColor.LIGHT_PURPLE + "Kit Configuration",
+                ChatColor.GRAY + settings.summary(),
+                ChatColor.GRAY + "Configure equipment, healing,",
+                ChatColor.GRAY + "enchantments, and combat rules."
+        ));
 
         inventory.setItem(10, ItemUtil.named(
                 Material.DIAMOND_CHESTPLATE,
-                ChatColor.AQUA + "Armor: " + settings.getArmorTier().name(),
-                ChatColor.GRAY + "Click to cycle armor tiers"
+                ChatColor.AQUA + "Armor Kit: " + display(settings.getArmorTier().name()),
+                ChatColor.GRAY + armorDescription(settings.getArmorTier()),
+                ChatColor.YELLOW + "Click to change kit"
         ));
 
         inventory.setItem(11, ItemUtil.named(
                 Material.DIAMOND_SWORD,
-                ChatColor.AQUA + "Weapons: " + settings.getWeaponMode().name(),
-                ChatColor.GRAY + "Click to cycle weapon modes"
+                ChatColor.AQUA + "Weapon Kit: " + display(settings.getWeaponMode().name()),
+                ChatColor.GRAY + weaponDescription(settings),
+                ChatColor.YELLOW + "Click to change weapons"
         ));
 
         inventory.setItem(12, ItemUtil.named(
                 Material.GOLDEN_APPLE,
-                ChatColor.AQUA + "Healing: " + settings.getHealingMode().name(),
-                ChatColor.GRAY + "None, one gapple, or three Health II potions"
+                ChatColor.AQUA + "Healing Kit: " + display(settings.getHealingMode().name()),
+                ChatColor.GRAY + healingDescription(settings.getHealingMode()),
+                ChatColor.YELLOW + "Click to change healing"
         ));
 
         inventory.setItem(13, ItemUtil.named(
                 Material.WOOL,
-                ChatColor.AQUA + "Building: " + (settings.isBuilding() ? "ENABLED" : "DISABLED"),
-                ChatColor.GRAY + "Provides two stacks of team-colored wool"
-        ));
-
-        inventory.setItem(14, ItemUtil.named(
-                Material.ENCHANTED_BOOK,
-                ChatColor.LIGHT_PURPLE + "Sword Sharpness: " + settings.getSwordSharpness(),
-                ChatColor.GRAY + "Shared remaining: " + (3 - settings.getSwordSharpness() - settings.getAxeSharpness())
+                ChatColor.AQUA + "Building",
+                toggle(settings.isBuilding()),
+                ChatColor.GRAY + "Enabled gives two stacks",
+                ChatColor.GRAY + "of team-colored wool.",
+                ChatColor.YELLOW + "Click to toggle"
         ));
 
         inventory.setItem(15, ItemUtil.named(
-                Material.ENCHANTED_BOOK,
-                ChatColor.LIGHT_PURPLE + "Axe Sharpness: " + settings.getAxeSharpness(),
-                ChatColor.GRAY + "Shared remaining: " + (3 - settings.getSwordSharpness() - settings.getAxeSharpness())
+                Material.WOOD_SWORD,
+                ChatColor.GOLD + "Legacy 1.8 Combat",
+                toggle(settings.isLegacyCombat()),
+                ChatColor.GRAY + "Removes the 1.9 attack cooldown",
+                ChatColor.GRAY + "on servers where it exists.",
+                ChatColor.YELLOW + "Click to toggle"
         ));
 
         inventory.setItem(16, ItemUtil.named(
-                Material.ANVIL,
-                ChatColor.YELLOW + "Sword Unbreaking: " + settings.getSwordUnbreaking(),
-                ChatColor.GRAY + "Shared remaining: " + (3 - settings.getSwordUnbreaking() - settings.getAxeUnbreaking())
+                Material.SLIME_BALL,
+                ChatColor.GOLD + "Custom Knockback",
+                toggle(settings.isCustomKnockback()),
+                ChatColor.GRAY + "Uses the configured horizontal",
+                ChatColor.GRAY + "and vertical multipliers.",
+                ChatColor.YELLOW + "Click to toggle"
         ));
 
-        inventory.setItem(17, ItemUtil.named(
+        inventory.setItem(19, ItemUtil.named(
+                Material.ENCHANTED_BOOK,
+                ChatColor.LIGHT_PURPLE + "Sword Sharpness: " + settings.getSwordSharpness(),
+                ChatColor.GRAY + "Shared Sharpness remaining: " +
+                        (3 - settings.getSwordSharpness() - settings.getAxeSharpness()),
+                ChatColor.YELLOW + "Click to allocate points"
+        ));
+
+        inventory.setItem(20, ItemUtil.named(
+                Material.ENCHANTED_BOOK,
+                ChatColor.LIGHT_PURPLE + "Axe Sharpness: " + settings.getAxeSharpness(),
+                ChatColor.GRAY + "Shared Sharpness remaining: " +
+                        (3 - settings.getSwordSharpness() - settings.getAxeSharpness()),
+                ChatColor.YELLOW + "Click to allocate points"
+        ));
+
+        inventory.setItem(21, ItemUtil.named(
                 Material.ANVIL,
-                ChatColor.YELLOW + "Axe Unbreaking: " + settings.getAxeUnbreaking(),
-                ChatColor.GRAY + "Shared remaining: " + (3 - settings.getSwordUnbreaking() - settings.getAxeUnbreaking())
+                ChatColor.YELLOW + "Sword Unbreaking: " + settings.getSwordUnbreaking(),
+                ChatColor.GRAY + "Shared Unbreaking remaining: " +
+                        (3 - settings.getSwordUnbreaking() - settings.getAxeUnbreaking()),
+                ChatColor.YELLOW + "Click to allocate points"
         ));
 
         inventory.setItem(22, ItemUtil.named(
+                Material.ANVIL,
+                ChatColor.YELLOW + "Axe Unbreaking: " + settings.getAxeUnbreaking(),
+                ChatColor.GRAY + "Shared Unbreaking remaining: " +
+                        (3 - settings.getSwordUnbreaking() - settings.getAxeUnbreaking()),
+                ChatColor.YELLOW + "Click to allocate points"
+        ));
+
+        inventory.setItem(31, ItemUtil.named(
+                Material.PAPER,
+                ChatColor.WHITE + "Complete Kit",
+                ChatColor.GRAY + settings.summary(),
+                ChatColor.GRAY + armorDescription(settings.getArmorTier()),
+                ChatColor.GRAY + weaponDescription(settings),
+                ChatColor.GRAY + healingDescription(settings.getHealingMode()),
+                ChatColor.GRAY + "Building: " + yesNo(settings.isBuilding()),
+                ChatColor.GRAY + "Legacy combat: " + yesNo(settings.isLegacyCombat()),
+                ChatColor.GRAY + "Custom knockback: " + yesNo(settings.isCustomKnockback())
+        ));
+
+        inventory.setItem(40, ItemUtil.named(
                 Material.EMERALD_BLOCK,
                 ChatColor.GREEN + "Send Challenge",
-                ChatColor.GRAY + settings.summary()
+                ChatColor.GRAY + settings.summary(),
+                ChatColor.YELLOW + "Click to submit this kit"
         ));
 
         player.openInventory(inventory);
@@ -122,7 +175,7 @@ public final class SetupGui implements Listener {
 
     @EventHandler
     public void onClick(InventoryClickEvent event) {
-        if (!"StarryPvP Setup".equals(event.getInventory().getTitle())) {
+        if (!"StarryPvP Kit Setup".equals(event.getInventory().getTitle())) {
             return;
         }
 
@@ -134,6 +187,7 @@ public final class SetupGui implements Listener {
 
         Player player = (Player) event.getWhoClicked();
         Session session = sessions.get(player.getUniqueId());
+
         if (session == null) {
             player.closeInventory();
             return;
@@ -149,21 +203,81 @@ public final class SetupGui implements Listener {
             session.getSettings().setHealingMode(session.getSettings().getHealingMode().next());
         } else if (slot == 13) {
             session.getSettings().setBuilding(!session.getSettings().isBuilding());
-        } else if (slot == 14) {
-            session.getSettings().cycleSwordSharpness();
         } else if (slot == 15) {
-            session.getSettings().cycleAxeSharpness();
+            session.getSettings().setLegacyCombat(!session.getSettings().isLegacyCombat());
         } else if (slot == 16) {
+            session.getSettings().setCustomKnockback(!session.getSettings().isCustomKnockback());
+        } else if (slot == 19) {
+            session.getSettings().cycleSwordSharpness();
+        } else if (slot == 20) {
+            session.getSettings().cycleAxeSharpness();
+        } else if (slot == 21) {
             session.getSettings().cycleSwordUnbreaking();
-        } else if (slot == 17) {
-            session.getSettings().cycleAxeUnbreaking();
         } else if (slot == 22) {
+            session.getSettings().cycleAxeUnbreaking();
+        } else if (slot == 40) {
             sessions.remove(player.getUniqueId());
             player.closeInventory();
-            plugin.getMatchManager().dispatchFromGui(player, session);
+
+            try {
+                plugin.getMatchManager().dispatchFromGui(player, session);
+            } catch (Throwable throwable) {
+                player.sendMessage(plugin.color("&cThe challenge could not be created. Your items were not changed."));
+                plugin.getLogger().severe("Could not dispatch challenge for " + player.getName() + ": " + throwable.getMessage());
+            }
+
             return;
         }
 
         render(player, session);
+    }
+
+    private String armorDescription(MatchSettings.ArmorTier tier) {
+        if (tier == MatchSettings.ArmorTier.LEATHER) {
+            return "Dyed leather armor with wooden weapons";
+        }
+        if (tier == MatchSettings.ArmorTier.CHAIN) {
+            return "Chainmail armor with stone weapons";
+        }
+        if (tier == MatchSettings.ArmorTier.GOLD) {
+            return "Gold armor with gold weapons";
+        }
+        if (tier == MatchSettings.ArmorTier.IRON) {
+            return "Iron armor with iron weapons";
+        }
+        return "Diamond armor with diamond weapons";
+    }
+
+    private String weaponDescription(MatchSettings settings) {
+        if (settings.getWeaponMode() == MatchSettings.WeaponMode.SWORDS) {
+            return "Includes one sword";
+        }
+        if (settings.getWeaponMode() == MatchSettings.WeaponMode.AXES) {
+            return "Includes one axe";
+        }
+        return "Includes one sword and one axe";
+    }
+
+    private String healingDescription(MatchSettings.HealingMode mode) {
+        if (mode == MatchSettings.HealingMode.GAPPLE) {
+            return "Includes one golden apple";
+        }
+        if (mode == MatchSettings.HealingMode.POTIONS) {
+            return "Includes three splash Instant Health II potions";
+        }
+        return "Includes no healing items";
+    }
+
+    private String toggle(boolean value) {
+        return value ? ChatColor.GREEN + "Enabled" : ChatColor.RED + "Disabled";
+    }
+
+    private String yesNo(boolean value) {
+        return value ? "Yes" : "No";
+    }
+
+    private String display(String value) {
+        String lower = value.toLowerCase();
+        return Character.toUpperCase(lower.charAt(0)) + lower.substring(1);
     }
 }
