@@ -1,0 +1,33 @@
+name: Build StarryPvP
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17 and Maven cache
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Build StarryPvP
+        run: mvn --batch-mode clean package
+
+      - name: Upload StarryPvP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: StarryPvP-Build
+          path: target/*.jar
+          if-no-files-found: error
