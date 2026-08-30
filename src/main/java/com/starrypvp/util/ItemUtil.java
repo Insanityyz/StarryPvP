@@ -9,10 +9,8 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.LeatherArmorMeta;
 import org.bukkit.inventory.meta.PotionMeta;
-import org.bukkit.potion.PotionType;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Method;
-import org.bukkit.potion.PotionType;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 
 import java.util.Arrays;
 
@@ -23,9 +21,13 @@ public final class ItemUtil {
     public static ItemStack named(Material material, String name, String... lore) {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName(name);
-        meta.setLore(Arrays.asList(lore));
-        item.setItemMeta(meta);
+
+        if (meta != null) {
+            meta.setDisplayName(name);
+            meta.setLore(Arrays.asList(lore));
+            item.setItemMeta(meta);
+        }
+
         return item;
     }
 
@@ -49,6 +51,8 @@ public final class ItemUtil {
 
         player.getInventory().setArmorContents(armor(settings.getArmorTier(), redTeam));
 
+        if (settings.getHealingMode() == MatchSettings.HealingMode.GAPPLE) {
+            player.getInventory().addItem(new ItemStack(Material.GOLDEN_APPLE, 1));
         } else if (settings.getHealingMode() == MatchSettings.HealingMode.POTIONS) {
             player.getInventory().addItem(createHealingPotion(3));
         }
@@ -63,31 +67,32 @@ public final class ItemUtil {
     }
 
     private static ItemStack createHealingPotion(int amount) {
-        Material splashMaterial = Material.matchMaterial("SPLASH_POTION");
+        Material splashPotion = Material.matchMaterial("SPLASH_POTION");
+        ItemStack potion;
 
-        if (splashMaterial != null) {
-            try {
-                ItemStack item = new ItemStack(splashMaterial, amount);
-                PotionMeta meta = (PotionMeta) item.getItemMeta();
-                Class<?> potionDataClass = Class.forName("org.bukkit.potion.PotionData");
-                Constructor<?> constructor = potionDataClass.getConstructor(PotionType.class, boolean.class, boolean.class);
-                Object potionData = constructor.newInstance(PotionType.INSTANT_HEAL, false, true);
-                Method method = meta.getClass().getMethod("setBasePotionData", potionDataClass);
-                method.invoke(meta, potionData);
-                item.setItemMeta(meta);
-                return item;
-            } catch (Throwable ignored) {
-                return new ItemStack(splashMaterial, amount, (short) 0);
-            }
+        if (splashPotion != null) {
+            potion = new ItemStack(splashPotion, amount);
+        } else {
+            potion = new ItemStack(Material.POTION, amount, (short) 16384);
         }
 
-        return new ItemStack(Material.POTION, amount, (short) 16421);
+        ItemMeta rawMeta = potion.getItemMeta();
+
+        if (rawMeta instanceof PotionMeta) {
+            PotionMeta meta = (PotionMeta) rawMeta;
+            meta.setDisplayName("Splash Potion of Healing II");
+            meta.addCustomEffect(new PotionEffect(PotionEffectType.HEAL, 1, 1), true);
+            potion.setItemMeta(meta);
+        }
+
+        return potion;
     }
 
     private static void enchant(ItemStack item, int sharpness, int unbreaking) {
         if (sharpness > 0) {
             item.addUnsafeEnchantment(Enchantment.DAMAGE_ALL, sharpness);
         }
+
         if (unbreaking > 0) {
             item.addUnsafeEnchantment(Enchantment.DURABILITY, unbreaking);
         }
@@ -95,7 +100,10 @@ public final class ItemUtil {
 
     private static ItemStack[] armor(MatchSettings.ArmorTier tier, boolean redTeam) {
         if (tier == MatchSettings.ArmorTier.LEATHER) {
-            Color color = redTeam ? Color.fromRGB(255, 0, 0) : Color.fromRGB(0, 0, 255);
+            Color color = redTeam
+                    ? Color.fromRGB(255, 0, 0)
+                    : Color.fromRGB(0, 0, 255);
+
             return new ItemStack[]{
                     dyed(Material.LEATHER_BOOTS, color),
                     dyed(Material.LEATHER_LEGGINGS, color),
@@ -104,7 +112,9 @@ public final class ItemUtil {
             };
         }
 
-        String prefix = tier == MatchSettings.ArmorTier.CHAIN ? "CHAINMAIL" : tier.name();
+        String prefix = tier == MatchSettings.ArmorTier.CHAIN
+                ? "CHAINMAIL"
+                : tier.name();
 
         return new ItemStack[]{
                 new ItemStack(Material.valueOf(prefix + "_BOOTS")),
@@ -116,9 +126,14 @@ public final class ItemUtil {
 
     private static ItemStack dyed(Material material, Color color) {
         ItemStack item = new ItemStack(material);
-        LeatherArmorMeta meta = (LeatherArmorMeta) item.getItemMeta();
-        meta.setColor(color);
-        item.setItemMeta(meta);
+        ItemMeta rawMeta = item.getItemMeta();
+
+        if (rawMeta instanceof LeatherArmorMeta) {
+            LeatherArmorMeta meta = (LeatherArmorMeta) rawMeta;
+            meta.setColor(color);
+            item.setItemMeta(meta);
+        }
+
         return item;
     }
 
@@ -126,9 +141,11 @@ public final class ItemUtil {
         if (tier == MatchSettings.ArmorTier.LEATHER) {
             return "WOOD";
         }
+
         if (tier == MatchSettings.ArmorTier.CHAIN) {
             return "STONE";
         }
+
         return tier.name();
     }
 }
