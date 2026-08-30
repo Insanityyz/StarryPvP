@@ -80,4 +80,39 @@ public final class Arena {
         }
         return !ffaSpawns.isEmpty();
     }
+        public Location getCenter() {
+        List<Location> locations = new ArrayList<Location>();
+        locations.addAll(redSpawns);
+        locations.addAll(blueSpawns);
+        locations.addAll(ffaSpawns);
+
+        if (spectatorSpawn != null) {
+            locations.add(spectatorSpawn);
+        }
+
+        if (locations.isEmpty()) {
+            return null;
+        }
+
+        Location first = locations.get(0);
+        double x = 0.0D;
+        double y = 0.0D;
+        double z = 0.0D;
+        int count = 0;
+
+        for (Location location : locations) {
+            if (location.getWorld() != null && location.getWorld().equals(first.getWorld())) {
+                x += location.getX();
+                y += location.getY();
+                z += location.getZ();
+                count++;
+            }
+        }
+
+        if (count == 0) {
+            return null;
+        }
+
+        return new Location(first.getWorld(), x / count, y / count, z / count);
+    }
 }
