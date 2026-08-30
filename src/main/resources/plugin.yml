@@ -1,0 +1,62 @@
+name: StarryPvP
+main: com.starrypvp.StarryPvP
+version: 1.0.0
+author: StarryPvP
+description: Legacy-compatible duels, team matches, practice matchmaking, FFA, parties, and spectators.
+
+commands:
+  pvp:
+    description: Main StarryPvP command.
+    usage: /pvp help
+    aliases:
+      - starrypvp
+
+permissions:
+  starrypvp.use:
+    description: Allows use of normal StarryPvP commands.
+    default: true
+
+  starrypvp.duel:
+    description: Allows players to create and accept duels.
+    default: true
+
+  starrypvp.practice:
+    description: Allows use of the practice queue.
+    default: true
+
+  starrypvp.party:
+    description: Allows use of party commands.
+    default: true
+
+  starrypvp.ffa:
+    description: Allows use of FFA commands.
+    default: true
+
+  starrypvp.spectate:
+    description: Allows spectating active matches.
+    default: true
+
+  starrypvp.admin:
+    description: Allows all administrative StarryPvP commands.
+    default: op
+    children:
+      starrypvp.admin.toggle: true
+      starrypvp.admin.end: true
+      starrypvp.admin.reset: true
+      starrypvp.admin.reload: true
+      starrypvp.admin.arena: true
+
+  starrypvp.admin.toggle:
+    default: op
+
+  starrypvp.admin.end:
+    default: op
+
+  starrypvp.admin.reset:
+    default: op
+
+  starrypvp.admin.reload:
+    default: op
+
+  starrypvp.admin.arena:
+    default: op
