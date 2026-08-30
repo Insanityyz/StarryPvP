@@ -7,6 +7,8 @@ import com.starrypvp.gui.SetupGui;
 import com.starrypvp.listener.GameListener;
 import com.starrypvp.match.MatchManager;
 import com.starrypvp.party.PartyManager;
+import com.starrypvp.arena.ArenaProtectionManager;
+import com.starrypvp.data.RecoveryManager;
 import org.bukkit.ChatColor;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -20,6 +22,8 @@ public final class StarryPvP extends JavaPlugin {
     private PartyManager partyManager;
     private MatchManager matchManager;
     private SetupGui setupGui;
+    private RecoveryManager recoveryManager;
+    private ArenaProtectionManager arenaProtectionManager;
     private YamlConfiguration messages;
     private File messagesFile;
 
@@ -32,6 +36,8 @@ public final class StarryPvP extends JavaPlugin {
         dataManager = new DataManager(this);
         arenaManager = new ArenaManager(this);
         partyManager = new PartyManager();
+        recoveryManager = new RecoveryManager(this);
+        arenaProtectionManager = new ArenaProtectionManager(this);
         matchManager = new MatchManager(this);
         setupGui = new SetupGui(this);
 
@@ -40,7 +46,10 @@ public final class StarryPvP extends JavaPlugin {
         getCommand("pvp").setTabCompleter(command);
 
         getServer().getPluginManager().registerEvents(setupGui, this);
+        getServer().getPluginManager().registerEvents(recoveryManager, this);
+        getServer().getPluginManager().registerEvents(arenaProtectionManager, this);
         getServer().getPluginManager().registerEvents(new GameListener(this), this);
+        recoveryManager.restoreOnlinePlayers();
     }
 
     public void onDisable() {
@@ -104,5 +113,12 @@ public final class StarryPvP extends JavaPlugin {
 
     public SetupGui getSetupGui() {
         return setupGui;
+    }
+    public RecoveryManager getRecoveryManager() {
+        return recoveryManager;
+    }
+
+    public ArenaProtectionManager getArenaProtectionManager() {
+        return arenaProtectionManager;
     }
 }
