@@ -69,10 +69,12 @@ public final class MatchSettings implements Cloneable {
 
     public void setWeaponMode(WeaponMode weaponMode) {
         this.weaponMode = weaponMode;
+
         if (!weaponMode.hasSword()) {
             swordSharpness = 0;
             swordUnbreaking = 0;
         }
+
         if (!weaponMode.hasAxe()) {
             axeSharpness = 0;
             axeUnbreaking = 0;
@@ -111,22 +113,6 @@ public final class MatchSettings implements Cloneable {
         this.customKnockback = customKnockback;
     }
 
-    public boolean isLegacyCombat() {
-        return legacyCombat;
-    }
-
-    public void setLegacyCombat(boolean legacyCombat) {
-        this.legacyCombat = legacyCombat;
-    }
-
-    public boolean isCustomKnockback() {
-        return customKnockback;
-    }
-
-    public void setCustomKnockback(boolean customKnockback) {
-        this.customKnockback = customKnockback;
-    }
-
     public int getSwordSharpness() {
         return swordSharpness;
     }
@@ -147,6 +133,7 @@ public final class MatchSettings implements Cloneable {
         if (!weaponMode.hasSword()) {
             return;
         }
+
         int next = (swordSharpness + 1) % 4;
         swordSharpness = next + axeSharpness <= 3 ? next : 0;
     }
@@ -155,6 +142,7 @@ public final class MatchSettings implements Cloneable {
         if (!weaponMode.hasAxe()) {
             return;
         }
+
         int next = (axeSharpness + 1) % 4;
         axeSharpness = next + swordSharpness <= 3 ? next : 0;
     }
@@ -163,6 +151,7 @@ public final class MatchSettings implements Cloneable {
         if (!weaponMode.hasSword()) {
             return;
         }
+
         int next = (swordUnbreaking + 1) % 4;
         swordUnbreaking = next + axeUnbreaking <= 3 ? next : 0;
     }
@@ -171,21 +160,26 @@ public final class MatchSettings implements Cloneable {
         if (!weaponMode.hasAxe()) {
             return;
         }
+
         int next = (axeUnbreaking + 1) % 4;
         axeUnbreaking = next + swordUnbreaking <= 3 ? next : 0;
     }
 
     public String summary() {
-        return display(armorTier.name()) + " Kit | " + display(weaponMode.name()) + " Weapons | " + healingText();
+        return display(armorTier.name()) + " Kit | " +
+                display(weaponMode.name()) + " Weapons | " +
+                healingText();
     }
 
     private String healingText() {
         if (healingMode == HealingMode.GAPPLE) {
             return "1x Gapple";
         }
+
         if (healingMode == HealingMode.POTIONS) {
             return "3x Health II";
         }
+
         return "No Healing";
     }
 
