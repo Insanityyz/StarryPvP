@@ -8,7 +8,10 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.LeatherArmorMeta;
-import org.bukkit.potion.Potion;
+import org.bukkit.inventory.meta.PotionMeta;
+import org.bukkit.potion.PotionType;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 import org.bukkit.potion.PotionType;
 
 import java.util.Arrays;
@@ -46,12 +49,8 @@ public final class ItemUtil {
 
         player.getInventory().setArmorContents(armor(settings.getArmorTier(), redTeam));
 
-        if (settings.getHealingMode() == MatchSettings.HealingMode.GAPPLE) {
-            player.getInventory().addItem(new ItemStack(Material.GOLDEN_APPLE, 1));
         } else if (settings.getHealingMode() == MatchSettings.HealingMode.POTIONS) {
-            Potion potion = new Potion(PotionType.INSTANT_HEAL, 2);
-            potion.setSplash(true);
-            player.getInventory().addItem(potion.toItemStack(3));
+            player.getInventory().addItem(createHealingPotion(3));
         }
 
         if (settings.isBuilding()) {
@@ -61,6 +60,28 @@ public final class ItemUtil {
         }
 
         player.updateInventory();
+    }
+
+    private static ItemStack createHealingPotion(int amount) {
+        Material splashMaterial = Material.matchMaterial("SPLASH_POTION");
+
+        if (splashMaterial != null) {
+            try {
+                ItemStack item = new ItemStack(splashMaterial, amount);
+                PotionMeta meta = (PotionMeta) item.getItemMeta();
+                Class<?> potionDataClass = Class.forName("org.bukkit.potion.PotionData");
+                Constructor<?> constructor = potionDataClass.getConstructor(PotionType.class, boolean.class, boolean.class);
+                Object potionData = constructor.newInstance(PotionType.INSTANT_HEAL, false, true);
+                Method method = meta.getClass().getMethod("setBasePotionData", potionDataClass);
+                method.invoke(meta, potionData);
+                item.setItemMeta(meta);
+                return item;
+            } catch (Throwable ignored) {
+                return new ItemStack(splashMaterial, amount, (short) 0);
+            }
+        }
+
+        return new ItemStack(Material.POTION, amount, (short) 16421);
     }
 
     private static void enchant(ItemStack item, int sharpness, int unbreaking) {
