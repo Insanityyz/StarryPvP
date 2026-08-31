@@ -202,28 +202,44 @@ public final class PvpCommand implements CommandExecutor, TabCompleter {
         player.sendMessage(plugin.color("&8&m--------------------------------"));
     }
 
-    private void spectate(Player player, String[] args) {
+        private void spectate(Player player, String[] args) {
         if (!player.hasPermission("starrypvp.spectate")) {
             player.sendMessage(plugin.message("no-permission"));
             return;
         }
 
+        if (args.length > 1 &&
+                (args[1].equalsIgnoreCase("leave") ||
+                        args[1].equalsIgnoreCase("exit") ||
+                        args[1].equalsIgnoreCase("stop"))) {
+            plugin.getMatchManager().stopSpectating(player);
+            return;
+        }
+
         if (args.length > 1) {
             Player target = Bukkit.getPlayer(args[1]);
+
             if (target == null) {
                 player.sendMessage(plugin.message("player-not-found"));
                 return;
             }
+
             plugin.getMatchManager().spectate(player, target);
             return;
+        }
+
+        if (plugin.getMatchManager().isSpectating(player)) {
+            player.sendMessage(plugin.color("&7Use &f/pvp spectate leave &7to stop spectating."));
         }
 
         player.sendMessage(plugin.color("&d&lLive StarryPvP Matches"));
 
         for (Match match : plugin.getMatchManager().activeMatches().values()) {
             Player target = null;
+
             for (UUID uuid : match.getParticipants()) {
                 target = Bukkit.getPlayer(uuid);
+
                 if (target != null) {
                     break;
                 }
@@ -236,11 +252,13 @@ public final class PvpCommand implements CommandExecutor, TabCompleter {
             TextComponent line = new TextComponent(
                     match.getArena().getName() + " | " + match.getType().name() + " | [SPECTATE]"
             );
+
             line.setColor(net.md_5.bungee.api.ChatColor.AQUA);
             line.setClickEvent(new ClickEvent(
                     ClickEvent.Action.RUN_COMMAND,
                     "/pvp spectate " + target.getName()
             ));
+
             player.spigot().sendMessage(line);
         }
     }
@@ -545,13 +563,21 @@ public final class PvpCommand implements CommandExecutor, TabCompleter {
         }
 
         if (args.length == 2 &&
+                (args[0].equalsIgnoreCase("spectate") ||
+                        args[0].equalsIgnoreCase("view"))) {
+            List<String> values = onlinePlayerNames();
+            values.add("leave");
+            values.add("exit");
+            values.add("stop");
+            return filter(values, args[1]);
+        }
+
+        if (args.length == 2 &&
                 (args[0].equalsIgnoreCase("duel") ||
                         args[0].equalsIgnoreCase("challenge") ||
                         args[0].equalsIgnoreCase("accept") ||
                         args[0].equalsIgnoreCase("deny") ||
                         args[0].equalsIgnoreCase("stats") ||
-                        args[0].equalsIgnoreCase("spectate") ||
-                        args[0].equalsIgnoreCase("view") ||
                         args[0].equalsIgnoreCase("end"))) {
             return filter(onlinePlayerNames(), args[1]);
         }
