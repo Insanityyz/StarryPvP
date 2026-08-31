@@ -2,6 +2,7 @@ package com.starrypvp.listener;
 
 import com.starrypvp.StarryPvP;
 import com.starrypvp.match.Match;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
@@ -28,6 +29,15 @@ public final class GameListener implements Listener {
 
     public GameListener(StarryPvP plugin) {
         this.plugin = plugin;
+    }
+
+    @EventHandler
+    public void onJoin(final PlayerJoinEvent event) {
+        Bukkit.getScheduler().runTaskLater(plugin, new Runnable() {
+            public void run() {
+                plugin.getMatchManager().forceSpectatorCleanup(event.getPlayer());
+            }
+        }, 5L);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
