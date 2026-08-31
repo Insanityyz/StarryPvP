@@ -812,11 +812,6 @@ public final class MatchManager {
         boolean tracked = spectatorReturns.containsKey(uuid) ||
                 spectatorSnapshots.containsKey(uuid);
 
-    public boolean isSpectating(Player player) {
-        return spectatorReturns.containsKey(player.getUniqueId()) ||
-            spectatorSnapshots.containsKey(player.getUniqueId());
-    }
-
         if (tracked) {
             stopSpectating(player);
             return;
@@ -879,46 +874,9 @@ public final class MatchManager {
         player.updateInventory();
     }
 
-    public void forceSpectatorCleanup(Player player) {
-        if (isSpectating(player)) {
-            stopSpectating(player);
-            return;
-        }
-
-        for (Match match : new java.util.HashSet<Match>(matchesByPlayer.values())) {
-            match.getSpectators().remove(player.getUniqueId());
-        }
-
-        for (Player viewer : Bukkit.getOnlinePlayers()) {
-            if (!viewer.equals(player)) {
-                viewer.showPlayer(player);
-            }
-        }
-    }
-
-    private void emergencySpectatorReset(Player player) {
-        try {
-            player.setSpectatorTarget(null);
-        } catch (Throwable ignored) {
-        }
-
-        if (player.getGameMode() == GameMode.SPECTATOR) {
-            player.setGameMode(GameMode.SURVIVAL);
-        }
-
-        if (player.getGameMode() != GameMode.CREATIVE) {
-            player.setFlying(false);
-            player.setAllowFlight(false);
-        }
-
-        player.setFireTicks(0);
-        player.removePotionEffect(PotionEffectType.NIGHT_VISION);
-        player.updateInventory();
-    }
-
     public boolean isSpectating(Player player) {
         return spectatorReturns.containsKey(player.getUniqueId()) ||
-            spectatorSnapshots.containsKey(player.getUniqueId());
+                spectatorSnapshots.containsKey(player.getUniqueId());
     }
 
     public Map<UUID, Match> activeMatches() {
