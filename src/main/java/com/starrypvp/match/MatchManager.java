@@ -19,7 +19,11 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.meta.FireworkMeta;
 import org.bukkit.scoreboard.Scoreboard;
 import org.bukkit.scoreboard.Team;
-
+import org.bukkit.entity.Ocelot;
+import org.bukkit.entity.Tameable;
+import org.bukkit.entity.Wolf;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -57,6 +61,8 @@ public final class MatchManager {
     private final Map<UUID, Deque<Request>> requests = new ConcurrentHashMap<UUID, Deque<Request>>();
     private final Map<UUID, Long> forfeitConfirmations = new ConcurrentHashMap<UUID, Long>();
     private final Map<UUID, Location> spectatorReturns = new ConcurrentHashMap<UUID, Location>();
+    private final Map<UUID, InventorySnapshot> spectatorSnapshots = new ConcurrentHashMap<UUID, InventorySnapshot>();
+    private final Map<UUID, Map<UUID, Boolean>> petSittingStates = new ConcurrentHashMap<UUID, Map<UUID, Boolean>>();
     private final Queue<UUID> practiceQueue = new ArrayDeque<UUID>();
     private final Map<UUID, InventorySnapshot> ffaSnapshots = new ConcurrentHashMap<UUID, InventorySnapshot>();
     private final Set<UUID> publicFfa = Collections.newSetFromMap(new ConcurrentHashMap<UUID, Boolean>());
@@ -257,6 +263,7 @@ public final class MatchManager {
             }
 
             plugin.getArenaProtectionManager().begin(match);
+            seatParticipantPets(match);
             prepareMatch(match);
             return true;
         } catch (Throwable throwable) {
@@ -322,7 +329,7 @@ public final class MatchManager {
         }
     }
 
-    private void preparePlayer(Player player, Match match, boolean red) {
+        private void preparePlayer(Player player, Match match, boolean red) {
         player.closeInventory();
         player.setGameMode(GameMode.SURVIVAL);
         player.setHealth(player.getMaxHealth());
@@ -333,9 +340,17 @@ public final class MatchManager {
         player.setLevel(0);
         player.setExp(0.0F);
 
-        for (org.bukkit.potion.PotionEffect effect : player.getActivePotionEffects()) {
+        for (PotionEffect effect : player.getActivePotionEffects()) {
             player.removePotionEffect(effect.getType());
         }
+
+        player.addPotionEffect(new PotionEffect(
+                PotionEffectType.NIGHT_VISION,
+                Integer.MAX_VALUE,
+                0,
+                true,
+                false
+        ), true);
 
         if (match.getSettings().isLegacyCombat()) {
             CombatUtil.enableLegacyAttackSpeed(player);
@@ -469,6 +484,20 @@ public final class MatchManager {
         }
 
         match.setEnded(true);
+
+        for (UUID spectatorId : new java.util.HashSet<UUID>(match.getSpectators())) {
+            Player spectator = Bukkit.getPlayer(spectatorId);
+
+            if (spectator != null) {
+                stopSpectating(spectator);
+            } else {
+                spectatorReturns.remove(spectatorId);
+                spectatorSnapshots.remove(spectatorId);
+                match.getSpectators().remove(spectatorId);
+            }
+        }
+
+        restoreParticipantPets(match);
         plugin.getArenaProtectionManager().rollback(match);
 
         if (!match.hasDirectDamage()) {
@@ -681,25 +710,51 @@ public final class MatchManager {
         return settings;
     }
 
-    public void spectate(Player spectator, Player target) {
+        public void spectate(Player spectator, Player target) {
         Match match = matchesByPlayer.get(target.getUniqueId());
 
-        if (match == null) {
+        if (match == null || match.isEnded()) {
             spectator.sendMessage(plugin.color("&cThat player is not in an active match."));
             return;
         }
 
-        if (matchesByPlayer.containsKey(spectator.getUniqueId()) || publicFfa.contains(spectator.getUniqueId())) {
+        if (matchesByPlayer.containsKey(spectator.getUniqueId()) ||
+                publicFfa.contains(spectator.getUniqueId())) {
             spectator.sendMessage(plugin.message("already-in-match"));
             return;
         }
 
-        if (spectatorReturns.containsKey(spectator.getUniqueId())) {
+        if (spectator.equals(target)) {
+            spectator.sendMessage(plugin.color("&cYou cannot spectate yourself."));
+            return;
+        }
+
+        if (isSpectating(spectator)) {
             stopSpectating(spectator);
         }
 
         spectatorReturns.put(spectator.getUniqueId(), spectator.getLocation().clone());
+        spectatorSnapshots.put(spectator.getUniqueId(), new InventorySnapshot(spectator));
         match.getSpectators().add(spectator.getUniqueId());
+
+        spectator.closeInventory();
+        spectator.setSpectatorTarget(null);
+        spectator.setGameMode(GameMode.SPECTATOR);
+        spectator.setAllowFlight(true);
+        spectator.setFlying(true);
+        spectator.setFireTicks(0);
+
+        for (PotionEffect effect : spectator.getActivePotionEffects()) {
+            spectator.removePotionEffect(effect.getType());
+        }
+
+        spectator.addPotionEffect(new PotionEffect(
+                PotionEffectType.NIGHT_VISION,
+                Integer.MAX_VALUE,
+                0,
+                true,
+                false
+        ), true);
 
         for (Player viewer : Bukkit.getOnlinePlayers()) {
             if (!viewer.equals(spectator)) {
@@ -707,38 +762,87 @@ public final class MatchManager {
             }
         }
 
-        spectator.closeInventory();
-        spectator.setGameMode(GameMode.SPECTATOR);
-        spectator.setAllowFlight(true);
-        spectator.setFlying(true);
         spectator.teleport(target.getLocation());
         spectator.setSpectatorTarget(target);
-        spectator.sendMessage(plugin.color("&aYou are now invisibly spectating &f" + target.getName() + "&a."));
+        spectator.sendMessage(plugin.color("&aYou are spectating &f" + target.getName() + "&a."));
+        spectator.sendMessage(plugin.color("&7Use &f/pvp spectate leave &7to exit safely."));
     }
 
-    public void stopSpectating(Player player) {
-        player.setSpectatorTarget(null);
-        player.setGameMode(GameMode.SURVIVAL);
-        player.setFlying(false);
-        player.setAllowFlight(false);
+public void stopSpectating(Player player) {
+        UUID uuid = player.getUniqueId();
+        InventorySnapshot snapshot = spectatorSnapshots.remove(uuid);
+        spectatorReturns.remove(uuid);
 
-        for (Player viewer : Bukkit.getOnlinePlayers()) {
-            viewer.showPlayer(player);
+        try {
+            player.setSpectatorTarget(null);
+        } catch (Throwable ignored) {
         }
 
-        Location location = spectatorReturns.remove(player.getUniqueId());
+        for (Match match : new java.util.HashSet<Match>(matchesByPlayer.values())) {
+            match.getSpectators().remove(uuid);
+        }
 
-        if (location != null) {
-            player.teleport(location);
+        player.removePotionEffect(PotionEffectType.NIGHT_VISION);
+
+        if (snapshot != null) {
+            try {
+                snapshot.restore(player);
+            } catch (Throwable throwable) {
+                emergencySpectatorReset(player);
+            }
+        } else {
+            emergencySpectatorReset(player);
+        }
+
+        for (Player viewer : Bukkit.getOnlinePlayers()) {
+            if (!viewer.equals(player)) {
+                viewer.showPlayer(player);
+            }
+        }
+
+        player.sendMessage(plugin.color("&aYou are no longer spectating."));
+    }
+
+    public void forceSpectatorCleanup(Player player) {
+        if (isSpectating(player)) {
+            stopSpectating(player);
+            return;
         }
 
         for (Match match : new java.util.HashSet<Match>(matchesByPlayer.values())) {
             match.getSpectators().remove(player.getUniqueId());
         }
+
+        for (Player viewer : Bukkit.getOnlinePlayers()) {
+            if (!viewer.equals(player)) {
+                viewer.showPlayer(player);
+            }
+        }
+    }
+
+    private void emergencySpectatorReset(Player player) {
+        try {
+            player.setSpectatorTarget(null);
+        } catch (Throwable ignored) {
+        }
+
+        if (player.getGameMode() == GameMode.SPECTATOR) {
+            player.setGameMode(GameMode.SURVIVAL);
+        }
+
+        if (player.getGameMode() != GameMode.CREATIVE) {
+            player.setFlying(false);
+            player.setAllowFlight(false);
+        }
+
+        player.setFireTicks(0);
+        player.removePotionEffect(PotionEffectType.NIGHT_VISION);
+        player.updateInventory();
     }
 
     public boolean isSpectating(Player player) {
         return spectatorReturns.containsKey(player.getUniqueId());
+        spectatorSnapshots.containsKey(player.getUniqueId());
     }
 
     public Map<UUID, Match> activeMatches() {
@@ -769,7 +873,73 @@ public final class MatchManager {
         this.duelRequestsEnabled = duelRequestsEnabled;
     }
 
+    private void seatParticipantPets(Match match) {
+        Map<UUID, Boolean> states = new HashMap<UUID, Boolean>();
+
+        for (org.bukkit.World world : Bukkit.getWorlds()) {
+            for (Entity entity : world.getEntities()) {
+                if (!(entity instanceof Tameable)) {
+                    continue;
+                }
+
+                Tameable tameable = (Tameable) entity;
+
+                if (!tameable.isTamed() || tameable.getOwner() == null) {
+                    continue;
+                }
+
+                if (!match.isParticipant(tameable.getOwner().getUniqueId())) {
+                    continue;
+                }
+
+                if (entity instanceof Wolf) {
+                    Wolf wolf = (Wolf) entity;
+                    states.put(wolf.getUniqueId(), wolf.isSitting());
+                    wolf.setSitting(true);
+                } else if (entity instanceof Ocelot) {
+                    Ocelot ocelot = (Ocelot) entity;
+                    states.put(ocelot.getUniqueId(), ocelot.isSitting());
+                    ocelot.setSitting(true);
+                }
+            }
+        }
+
+        petSittingStates.put(match.getId(), states);
+    }
+
+    private void restoreParticipantPets(Match match) {
+        Map<UUID, Boolean> states = petSittingStates.remove(match.getId());
+
+        if (states == null || states.isEmpty()) {
+            return;
+        }
+
+        for (org.bukkit.World world : Bukkit.getWorlds()) {
+            for (Entity entity : world.getEntities()) {
+                Boolean sitting = states.get(entity.getUniqueId());
+
+                if (sitting == null) {
+                    continue;
+                }
+
+                if (entity instanceof Wolf) {
+                    ((Wolf) entity).setSitting(sitting.booleanValue());
+                } else if (entity instanceof Ocelot) {
+                    ((Ocelot) entity).setSitting(sitting.booleanValue());
+                }
+            }
+        }
+    }
+    
     public void shutdown() {
+        for (UUID uuid : new java.util.HashSet<UUID>(spectatorSnapshots.keySet())) {
+            Player spectator = Bukkit.getPlayer(uuid);
+
+            if (spectator != null) {
+                stopSpectating(spectator);
+            }
+        }
+
         for (Match match : new java.util.HashSet<Match>(matchesByPlayer.values())) {
             endMatch(match, Collections.<UUID>emptySet(), false);
         }
