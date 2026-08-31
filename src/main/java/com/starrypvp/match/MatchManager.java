@@ -812,6 +812,11 @@ public final class MatchManager {
         boolean tracked = spectatorReturns.containsKey(uuid) ||
                 spectatorSnapshots.containsKey(uuid);
 
+    public boolean isSpectating(Player player) {
+        return spectatorReturns.containsKey(player.getUniqueId()) ||
+            spectatorSnapshots.containsKey(player.getUniqueId());
+    }
+
         if (tracked) {
             stopSpectating(player);
             return;
