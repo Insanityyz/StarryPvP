@@ -841,8 +841,8 @@ public void stopSpectating(Player player) {
     }
 
     public boolean isSpectating(Player player) {
-        return spectatorReturns.containsKey(player.getUniqueId());
-        spectatorSnapshots.containsKey(player.getUniqueId());
+        return spectatorReturns.containsKey(player.getUniqueId()) ||
+            spectatorSnapshots.containsKey(player.getUniqueId());
     }
 
     public Map<UUID, Match> activeMatches() {
