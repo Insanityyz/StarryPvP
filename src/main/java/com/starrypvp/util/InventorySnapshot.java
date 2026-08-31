@@ -7,9 +7,11 @@ import org.bukkit.World;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.potion.PotionEffect;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 
 public final class InventorySnapshot {
@@ -25,6 +27,7 @@ public final class InventorySnapshot {
     private final int totalExperience;
     private final boolean allowFlight;
     private final boolean flying;
+    private final List<PotionEffect> effects;
 
     public InventorySnapshot(Player player) {
         this(
@@ -39,14 +42,16 @@ public final class InventorySnapshot {
                 player.getExp(),
                 player.getTotalExperience(),
                 player.getAllowFlight(),
-                player.isFlying()
+                player.isFlying(),
+                new ArrayList<PotionEffect>(player.getActivePotionEffects())
         );
     }
 
     private InventorySnapshot(ItemStack[] contents, ItemStack[] armor, Location location,
                               GameMode gameMode, double health, int food, float saturation,
                               int level, float experience, int totalExperience,
-                              boolean allowFlight, boolean flying) {
+                              boolean allowFlight, boolean flying,
+                              Collection<PotionEffect> effects) {
         this.contents = contents;
         this.armor = armor;
         this.location = location;
@@ -59,17 +64,29 @@ public final class InventorySnapshot {
         this.totalExperience = totalExperience;
         this.allowFlight = allowFlight;
         this.flying = flying;
+        this.effects = new ArrayList<PotionEffect>(effects);
     }
 
     public void restore(Player player) {
         player.closeInventory();
+
+        try {
+            player.setSpectatorTarget(null);
+        } catch (Throwable ignored) {
+        }
+
         player.getInventory().clear();
         player.getInventory().setArmorContents(new ItemStack[4]);
         player.getInventory().setContents(cloneItems(contents));
         player.getInventory().setArmorContents(cloneItems(armor));
         player.setGameMode(gameMode);
         player.setAllowFlight(allowFlight);
-        player.setFlying(allowFlight && flying);
+
+        try {
+            player.setFlying(allowFlight && flying);
+        } catch (Throwable ignored) {
+        }
+
         player.setFoodLevel(food);
         player.setSaturation(saturation);
         player.setTotalExperience(0);
@@ -78,8 +95,12 @@ public final class InventorySnapshot {
         player.setTotalExperience(totalExperience);
         player.setFireTicks(0);
 
-        for (org.bukkit.potion.PotionEffect effect : player.getActivePotionEffects()) {
+        for (PotionEffect effect : player.getActivePotionEffects()) {
             player.removePotionEffect(effect.getType());
+        }
+
+        for (PotionEffect effect : effects) {
+            player.addPotionEffect(effect, true);
         }
 
         if (!player.isDead()) {
@@ -111,6 +132,7 @@ public final class InventorySnapshot {
         configuration.set(path + ".total-experience", totalExperience);
         configuration.set(path + ".allow-flight", allowFlight);
         configuration.set(path + ".flying", flying);
+        configuration.set(path + ".effects", new ArrayList<PotionEffect>(effects));
     }
 
     public static InventorySnapshot read(ConfigurationSection configuration, String path) {
@@ -128,11 +150,19 @@ public final class InventorySnapshot {
             );
         }
 
+        GameMode gameMode;
+
+        try {
+            gameMode = GameMode.valueOf(configuration.getString(path + ".gamemode", "SURVIVAL"));
+        } catch (IllegalArgumentException exception) {
+            gameMode = GameMode.SURVIVAL;
+        }
+
         return new InventorySnapshot(
                 readItems(configuration.getList(path + ".contents")),
                 readItems(configuration.getList(path + ".armor")),
                 location,
-                GameMode.valueOf(configuration.getString(path + ".gamemode", "SURVIVAL")),
+                gameMode,
                 configuration.getDouble(path + ".health", 20.0D),
                 configuration.getInt(path + ".food", 20),
                 (float) configuration.getDouble(path + ".saturation", 5.0D),
@@ -140,8 +170,25 @@ public final class InventorySnapshot {
                 (float) configuration.getDouble(path + ".experience"),
                 configuration.getInt(path + ".total-experience"),
                 configuration.getBoolean(path + ".allow-flight"),
-                configuration.getBoolean(path + ".flying")
+                configuration.getBoolean(path + ".flying"),
+                readEffects(configuration.getList(path + ".effects"))
         );
+    }
+
+    private static List<PotionEffect> readEffects(List<?> values) {
+        List<PotionEffect> effects = new ArrayList<PotionEffect>();
+
+        if (values == null) {
+            return effects;
+        }
+
+        for (Object value : values) {
+            if (value instanceof PotionEffect) {
+                effects.add((PotionEffect) value);
+            }
+        }
+
+        return effects;
     }
 
     private static ItemStack[] readItems(List<?> values) {
