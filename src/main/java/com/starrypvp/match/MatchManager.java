@@ -710,7 +710,7 @@ public final class MatchManager {
         return settings;
     }
 
-        public void spectate(Player spectator, Player target) {
+            public void spectate(Player spectator, Player target) {
         Match match = matchesByPlayer.get(target.getUniqueId());
 
         if (match == null || match.isEnded()) {
@@ -733,56 +733,66 @@ public final class MatchManager {
             stopSpectating(spectator);
         }
 
-        spectatorReturns.put(spectator.getUniqueId(), spectator.getLocation().clone());
-        spectatorSnapshots.put(spectator.getUniqueId(), new InventorySnapshot(spectator));
-        match.getSpectators().add(spectator.getUniqueId());
+        InventorySnapshot snapshot = new InventorySnapshot(spectator);
+        Location returnLocation = spectator.getLocation().clone();
 
-        spectator.closeInventory();
-        spectator.setSpectatorTarget(null);
-        spectator.setGameMode(GameMode.SPECTATOR);
-        spectator.setAllowFlight(true);
-        spectator.setFlying(true);
-        spectator.setFireTicks(0);
+        try {
+            spectator.closeInventory();
+            spectator.setGameMode(GameMode.SPECTATOR);
+            spectator.setSpectatorTarget(null);
+            spectator.setAllowFlight(true);
+            spectator.setFlying(true);
+            spectator.setFireTicks(0);
 
-        for (PotionEffect effect : spectator.getActivePotionEffects()) {
-            spectator.removePotionEffect(effect.getType());
-        }
+            spectator.addPotionEffect(new PotionEffect(
+                    PotionEffectType.NIGHT_VISION,
+                    Integer.MAX_VALUE,
+                    0,
+                    true,
+                    false
+            ), true);
 
-        spectator.addPotionEffect(new PotionEffect(
-                PotionEffectType.NIGHT_VISION,
-                Integer.MAX_VALUE,
-                0,
-                true,
-                false
-        ), true);
+            spectator.teleport(target.getLocation());
+            spectator.setSpectatorTarget(target);
 
-        for (Player viewer : Bukkit.getOnlinePlayers()) {
-            if (!viewer.equals(spectator)) {
-                viewer.hidePlayer(spectator);
+            spectatorReturns.put(spectator.getUniqueId(), returnLocation);
+            spectatorSnapshots.put(spectator.getUniqueId(), snapshot);
+            match.getSpectators().add(spectator.getUniqueId());
+
+            spectator.sendMessage(plugin.color("&aYou are spectating &f" + target.getName() + "&a."));
+            spectator.sendMessage(plugin.color("&7Use &f/pvp spectate leave &7to exit safely."));
+        } catch (Throwable throwable) {
+            spectatorReturns.remove(spectator.getUniqueId());
+            spectatorSnapshots.remove(spectator.getUniqueId());
+            match.getSpectators().remove(spectator.getUniqueId());
+
+            try {
+                snapshot.restore(spectator);
+            } catch (Throwable ignored) {
+                emergencySpectatorReset(spectator);
             }
-        }
 
-        spectator.teleport(target.getLocation());
-        spectator.setSpectatorTarget(target);
-        spectator.sendMessage(plugin.color("&aYou are spectating &f" + target.getName() + "&a."));
-        spectator.sendMessage(plugin.color("&7Use &f/pvp spectate leave &7to exit safely."));
+            spectator.sendMessage(plugin.color("&cSpectator mode could not be started. Your previous state was restored."));
+            plugin.getLogger().severe("Could not start spectator mode for " +
+                    spectator.getName() + ": " + throwable.getMessage());
+        }
     }
 
-public void stopSpectating(Player player) {
+        public void stopSpectating(Player player) {
         UUID uuid = player.getUniqueId();
         InventorySnapshot snapshot = spectatorSnapshots.remove(uuid);
         spectatorReturns.remove(uuid);
-
-        try {
-            player.setSpectatorTarget(null);
-        } catch (Throwable ignored) {
-        }
 
         for (Match match : new java.util.HashSet<Match>(matchesByPlayer.values())) {
             match.getSpectators().remove(uuid);
         }
 
-        player.removePotionEffect(PotionEffectType.NIGHT_VISION);
+        try {
+            if (player.getGameMode() == GameMode.SPECTATOR) {
+                player.setSpectatorTarget(null);
+            }
+        } catch (Throwable ignored) {
+        }
 
         if (snapshot != null) {
             try {
@@ -794,13 +804,74 @@ public void stopSpectating(Player player) {
             emergencySpectatorReset(player);
         }
 
-        for (Player viewer : Bukkit.getOnlinePlayers()) {
-            if (!viewer.equals(player)) {
-                viewer.showPlayer(player);
+        player.sendMessage(plugin.color("&aYou are no longer spectating."));
+    }
+
+    public void forceSpectatorCleanup(Player player) {
+        UUID uuid = player.getUniqueId();
+        boolean tracked = spectatorReturns.containsKey(uuid) ||
+                spectatorSnapshots.containsKey(uuid);
+
+        if (tracked) {
+            stopSpectating(player);
+            return;
+        }
+
+        for (Match match : new java.util.HashSet<Match>(matchesByPlayer.values())) {
+            match.getSpectators().remove(uuid);
+        }
+    }
+
+    public void forceUnstuck(Player player) {
+        UUID uuid = player.getUniqueId();
+        spectatorReturns.remove(uuid);
+        InventorySnapshot snapshot = spectatorSnapshots.remove(uuid);
+
+        for (Match match : new java.util.HashSet<Match>(matchesByPlayer.values())) {
+            match.getSpectators().remove(uuid);
+        }
+
+        try {
+            if (player.getGameMode() == GameMode.SPECTATOR) {
+                player.setSpectatorTarget(null);
+            }
+        } catch (Throwable ignored) {
+        }
+
+        if (snapshot != null) {
+            try {
+                snapshot.restore(player);
+                player.sendMessage(plugin.color("&aYour pre-spectator state was restored."));
+                return;
+            } catch (Throwable ignored) {
             }
         }
 
-        player.sendMessage(plugin.color("&aYou are no longer spectating."));
+        emergencySpectatorReset(player);
+        player.sendMessage(plugin.color("&aStarryPvP spectator restrictions were cleared."));
+    }
+
+    private void emergencySpectatorReset(Player player) {
+        try {
+            if (player.getGameMode() == GameMode.SPECTATOR) {
+                player.setSpectatorTarget(null);
+            }
+        } catch (Throwable ignored) {
+        }
+
+        if (player.getGameMode() == GameMode.SPECTATOR ||
+                player.getGameMode() == GameMode.ADVENTURE) {
+            player.setGameMode(GameMode.SURVIVAL);
+        }
+
+        if (player.getGameMode() != GameMode.CREATIVE) {
+            player.setFlying(false);
+            player.setAllowFlight(false);
+        }
+
+        player.setFireTicks(0);
+        player.removePotionEffect(PotionEffectType.NIGHT_VISION);
+        player.updateInventory();
     }
 
     public void forceSpectatorCleanup(Player player) {
