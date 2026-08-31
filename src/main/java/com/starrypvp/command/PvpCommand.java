@@ -86,6 +86,8 @@ public final class PvpCommand implements CommandExecutor, TabCompleter {
             showLeaderboard(player, args.length > 1 && args[1].equalsIgnoreCase("ratio"));
         } else if (sub.equals("spectate") || sub.equals("view")) {
             spectate(player, args);
+        } else if (sub.equals("unstuck")) {
+            plugin.getMatchManager().forceUnstuck(player);
         } else if (sub.equals("party")) {
             party(player, args);
         } else if (sub.equals("team")) {
@@ -132,6 +134,7 @@ public final class PvpCommand implements CommandExecutor, TabCompleter {
         sendHelp(player, "starrypvp.use", "/pvp stats [player]", "View PvP statistics");
         sendHelp(player, "starrypvp.use", "/pvp top [ratio]", "View rankings");
         sendHelp(player, "starrypvp.spectate", "/pvp spectate [player]", "View active matches");
+        sendHelp(player, "starrypvp.use", "/pvp unstuck", "Clear broken spectator state");
         sendHelp(player, "starrypvp.party", "/pvp party", "Manage your party");
         sendHelp(player, "starrypvp.ffa", "/pvp ffa join|leave", "Manage FFA participation");
 
@@ -552,7 +555,7 @@ public final class PvpCommand implements CommandExecutor, TabCompleter {
             List<String> values = new ArrayList<String>(Arrays.asList(
                     "help", "duel", "accept", "deny", "leave", "forfeit",
                     "practice", "stats", "leaderboard", "top",
-                    "spectate", "view", "party", "team", "ffa"
+                    "spectate", "view", "unstuck", "party", "team", "ffa"
             ));
 
             if (sender.hasPermission("starrypvp.admin")) {
