@@ -106,16 +106,20 @@ public final class GameListener implements Listener {
     @EventHandler
     public void onDeath(PlayerDeathEvent event) {
         final Player player = event.getEntity();
-        event.getDrops().clear();
-        event.setDroppedExp(0);
-        event.setKeepLevel(true);
 
         if (plugin.getMatchManager().getMatch(player) != null) {
+            event.getDrops().clear();
+            event.setDroppedExp(0);
+            event.setKeepLevel(true);
             plugin.getMatchManager().eliminate(player);
             return;
         }
 
         if (plugin.getMatchManager().isPublicFfa(player)) {
+            event.getDrops().clear();
+            event.setDroppedExp(0);
+            event.setKeepLevel(true);
+
             long delay = plugin.getConfig().getLong("ffa.respawn-delay-ticks", 20L);
 
             Bukkit.getScheduler().runTaskLater(plugin, new Runnable() {
