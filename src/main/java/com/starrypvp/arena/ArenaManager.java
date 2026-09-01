@@ -103,37 +103,82 @@ public final class ArenaManager {
 
     public boolean addSpawn(String name, String type, Location location) {
         Arena arena = get(name);
-        if (arena == null) {
+
+        if (arena == null || arena.isOccupied()) {
             return false;
         }
 
-        String base = "arenas." + arena.getName();
-        String encoded = encode(location);
+        int index = type.equalsIgnoreCase("SPECTATOR")
+                ? 1
+                : arena.getSpawnCount(type) + 1;
 
-        if (type.equalsIgnoreCase("RED")) {
-            arena.addRedSpawn(location);
-            List<String> values = configuration.getStringList(base + ".red");
-            values.add(encoded);
-            configuration.set(base + ".red", values);
-        } else if (type.equalsIgnoreCase("BLUE")) {
-            arena.addBlueSpawn(location);
-            List<String> values = configuration.getStringList(base + ".blue");
-            values.add(encoded);
-            configuration.set(base + ".blue", values);
-        } else if (type.equalsIgnoreCase("FFA")) {
-            arena.addFfaSpawn(location);
-            List<String> values = configuration.getStringList(base + ".ffa");
-            values.add(encoded);
-            configuration.set(base + ".ffa", values);
-        } else if (type.equalsIgnoreCase("SPECTATOR")) {
-            arena.setSpectatorSpawn(location);
-            configuration.set(base + ".spectator", encoded);
-        } else {
+        return setSpawn(name, type, index, location);
+    }
+
+    public boolean setSpawn(String name, String type, int index, Location location) {
+        Arena arena = get(name);
+
+        if (arena == null || arena.isOccupied()) {
             return false;
         }
 
+        if (!arena.setSpawn(type, index, location)) {
+            return false;
+        }
+
+        persistSpawns(arena);
         save();
         return true;
+    }
+
+    public boolean removeSpawn(String name, String type, int index) {
+        Arena arena = get(name);
+
+        if (arena == null || arena.isOccupied()) {
+            return false;
+        }
+
+        if (!arena.removeSpawn(type, index)) {
+            return false;
+        }
+
+        persistSpawns(arena);
+        save();
+        return true;
+    }
+
+    public Location getSpawn(String name, String type, int index) {
+        Arena arena = get(name);
+        return arena == null ? null : arena.getSpawn(type, index);
+    }
+
+    private void persistSpawns(Arena arena) {
+        String base = "arenas." + arena.getName();
+        List<String> red = new ArrayList<String>();
+        List<String> blue = new ArrayList<String>();
+        List<String> ffa = new ArrayList<String>();
+
+        for (Location location : arena.getRedSpawns()) {
+            red.add(encode(location));
+        }
+
+        for (Location location : arena.getBlueSpawns()) {
+            blue.add(encode(location));
+        }
+
+        for (Location location : arena.getFfaSpawns()) {
+            ffa.add(encode(location));
+        }
+
+        configuration.set(base + ".red", red);
+        configuration.set(base + ".blue", blue);
+        configuration.set(base + ".ffa", ffa);
+
+        Location spectator = arena.getSpectatorSpawn();
+        configuration.set(
+                base + ".spectator",
+                spectator == null ? null : encode(spectator)
+        );
     }
 
     public Arena acquire(Arena.Mode mode) {
