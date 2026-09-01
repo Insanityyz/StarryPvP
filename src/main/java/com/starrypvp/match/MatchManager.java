@@ -807,7 +807,7 @@ public final class MatchManager {
         player.sendMessage(plugin.color("&aYou are no longer spectating."));
     }
 
-    public void forceSpectatorCleanup(Player player) {
+       public void forceSpectatorCleanup(Player player) {
         UUID uuid = player.getUniqueId();
         boolean tracked = spectatorReturns.containsKey(uuid) ||
                 spectatorSnapshots.containsKey(uuid);
