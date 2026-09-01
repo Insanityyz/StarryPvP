@@ -234,6 +234,22 @@ public final class MatchManager {
             return false;
         }
 
+        if ((arenaMode == Arena.Mode.DUEL || arenaMode == Arena.Mode.TEAM) &&
+                (arena.getRedSpawns().size() < redPlayers.size() ||
+                        arena.getBlueSpawns().size() < bluePlayers.size())) {
+            plugin.getArenaManager().release(arena);
+
+            for (Player player : redPlayers) {
+                player.sendMessage(plugin.color("&cThat arena does not have enough red and blue spawns for this match."));
+            }
+
+            for (Player player : bluePlayers) {
+                player.sendMessage(plugin.color("&cThat arena does not have enough red and blue spawns for this match."));
+            }
+
+            return false;
+        }
+
         for (Player player : redPlayers) {
             if (isBusy(player)) {
                 plugin.getArenaManager().release(arena);
