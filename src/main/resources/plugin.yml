@@ -3,6 +3,8 @@ main: com.starrypvp.StarryPvP
 version: 1.0.0
 author: StarryPvP
 description: Legacy-compatible duels, team matches, practice matchmaking, FFA, parties, and spectators.
+softdepend:
+  - FactionsX
 
 commands:
   pvp:
