@@ -40,8 +40,36 @@ public final class GameListener implements Listener {
         }, 5L);
     }
 
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onMatchDamageCompatibility(EntityDamageByEntityEvent event) {
+        if (!plugin.getConfig().getBoolean("compatibility.override-external-friendly-fire", true)) {
+            return;
+        }
+
+        if (!(event.getEntity() instanceof Player)) {
+            return;
+        }
+
+        Player victim = (Player) event.getEntity();
+        Player attacker = resolveAttacker(event.getDamager());
+
+        if (attacker == null) {
+            return;
+        }
+
+        if (plugin.getMatchManager().isSpectating(attacker) ||
+                plugin.getMatchManager().isSpectating(victim)) {
+            return;
+        }
+
+        if (plugin.getMatchManager().canDamage(attacker, victim)) {
+            event.setCancelled(false);
+            plugin.getMatchManager().markDirectDamage(attacker, victim);
+        }
+    }
+
     @EventHandler(priority = EventPriority.HIGHEST)
-    public void onDamage(EntityDamageByEntityEvent event) {
+    public void onAnyDamage(EntityDamageEvent event) {
         if (!(event.getEntity() instanceof Player)) {
             return;
         }
