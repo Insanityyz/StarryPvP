@@ -10,6 +10,7 @@ import net.md_5.bungee.api.chat.ClickEvent;
 import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
+import org.bukkit.Location;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -58,11 +59,11 @@ public final class PvpCommand implements CommandExecutor, TabCompleter {
 
         if (sub.equals("help")) {
             showHelp(player);
-        } else if (sub.equals("duel") || sub.equals("challenge")) {
+        } else if (sub.equals("duel") || sub.equals("duels") || sub.equals("challenge")) {
             if (args.length < 2) {
-                player.sendMessage(plugin.color("&cUsage: /pvp duel <player>"));
+                player.sendMessage(plugin.color("&cUsage: /pvp duel <player> [2v2|3v3|5v5]"));
             } else {
-                challenge(player, new String[]{args[1]});
+                challenge(player, Arrays.copyOfRange(args, 1, args.length));
             }
         } else if (sub.equals("accept")) {
             plugin.getMatchManager().accept(player, args.length > 1 ? args[1] : null);
@@ -74,7 +75,7 @@ public final class PvpCommand implements CommandExecutor, TabCompleter {
             } else {
                 plugin.getMatchManager().requestForfeit(player);
             }
-        } else if (sub.equals("practice")) {
+        } else if (sub.equals("practice") || sub.equals("random")) {
             require(player, "starrypvp.practice", new Runnable() {
                 public void run() {
                     plugin.getMatchManager().togglePractice(player);
@@ -162,15 +163,54 @@ public final class PvpCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
+        if (args.length == 0) {
+            player.sendMessage(plugin.color("&cUsage: /pvp duel <player> [2v2|3v3|5v5]"));
+            return;
+        }
+
         Player target = Bukkit.getPlayer(args[0]);
+
         if (target == null) {
             player.sendMessage(plugin.message("player-not-found"));
             return;
         }
 
-        SetupGui.ChallengeType type = args.length > 1
-                ? SetupGui.ChallengeType.TEAM
-                : SetupGui.ChallengeType.DUEL;
+        SetupGui.ChallengeType type = SetupGui.ChallengeType.DUEL;
+
+        if (args.length > 1) {
+            String size = args[1].toLowerCase();
+
+            if (!size.equals("2v2") && !size.equals("3v3") && !size.equals("5v5")) {
+                player.sendMessage(plugin.color("&cTeam size must be 2v2, 3v3, or 5v5."));
+                return;
+            }
+
+            int expectedSize = Integer.parseInt(size.substring(0, 1));
+            PartyManager.Party first = plugin.getPartyManager().get(player);
+            PartyManager.Party second = plugin.getPartyManager().get(target);
+
+            if (first == null || second == null || first == second) {
+                player.sendMessage(plugin.color("&cBoth players must lead separate parties."));
+                return;
+            }
+
+            if (!plugin.getPartyManager().isLeader(player) ||
+                    !plugin.getPartyManager().isLeader(target)) {
+                player.sendMessage(plugin.color("&cBoth selected players must be party leaders."));
+                return;
+            }
+
+            int firstSize = plugin.getPartyManager().onlineMembers(first).size();
+            int secondSize = plugin.getPartyManager().onlineMembers(second).size();
+
+            if (firstSize != expectedSize || secondSize != expectedSize) {
+                player.sendMessage(plugin.color("&cBoth parties must have exactly " +
+                        expectedSize + " online members for " + size + "."));
+                return;
+            }
+
+            type = SetupGui.ChallengeType.TEAM;
+        }
 
         plugin.getSetupGui().open(player, target, type);
     }
@@ -462,6 +502,227 @@ public final class PvpCommand implements CommandExecutor, TabCompleter {
         if (args.length < 2) {
             player.sendMessage(plugin.color("&f/pvp arena create <name> <DUEL|TEAM|FFA>"));
             player.sendMessage(plugin.color("&f/pvp arena delete <name>"));
+            player.sendMessage(plugin.color("&f/pvp arena list [name]"));
+            player.sendMessage(plugin.color("&f/pvp arena info <name>"));
+            player.sendMessage(plugin.color("&f/pvp arena spawn add <name> <RED|BLUE|FFA|SPECTATOR>"));
+            player.sendMessage(plugin.color("&f/pvp arena spawn set <name> <type> [index]"));
+            player.sendMessage(plugin.color("&f/pvp arena spawn delete <name> <type> [index]"));
+            player.sendMessage(plugin.color("&f/pvp arena spawn tp <name> <type> [index]"));
+            player.sendMessage(plugin.color("&f/pvp arena spawn list <name> [type]"));
+            player.sendMessage(plugin.color("&f/pvp arena tp <name>"));
+            return;
+        }
+
+        String action = args[1].toLowerCase();
+
+        if (action.equals("create") && args.length > 3) {
+            try {
+                Arena.Mode mode = Arena.Mode.valueOf(args[3].toUpperCase());
+                player.sendMessage(plugin.getArenaManager().create(args[2], mode)
+                        ? plugin.color("&aArena created.")
+                        : plugin.color("&cAn arena with that name already exists."));
+            } catch (IllegalArgumentException exception) {
+                player.sendMessage(plugin.color("&cMode must be DUEL, TEAM, or FFA."));
+            }
+        } else if (action.equals("delete") && args.length > 2) {
+            player.sendMessage(plugin.getArenaManager().delete(args[2])
+                    ? plugin.color("&aArena deleted.")
+                    : plugin.color("&cArena not found or currently occupied."));
+        } else if (action.equals("list") && args.length > 2) {
+            showArenaInfo(player, args[2]);
+        } else if (action.equals("list")) {
+            player.sendMessage(plugin.color("&d&lConfigured Arenas"));
+
+            for (Arena arena : plugin.getArenaManager().all()) {
+                player.sendMessage(plugin.color("&f" + arena.getName() + " &7- " +
+                        arena.getMode().name() + " - " +
+                        (arena.isReady() ? "&aReady" : "&cIncomplete")));
+            }
+        } else if (action.equals("info") && args.length > 2) {
+            showArenaInfo(player, args[2]);
+        } else if (action.equals("addspawn") && args.length > 3) {
+            player.sendMessage(plugin.getArenaManager().addSpawn(
+                    args[2],
+                    args[3],
+                    player.getLocation()
+            )
+                    ? plugin.color("&aArena spawn point added.")
+                    : plugin.color("&cInvalid arena, spawn type, or the arena is occupied."));
+        } else if (action.equals("spawn")) {
+            arenaSpawn(player, args);
+        } else if (action.equals("tp") && args.length > 2) {
+            Arena arena = plugin.getArenaManager().get(args[2]);
+
+            if (arena == null) {
+                player.sendMessage(plugin.color("&cArena not found."));
+                return;
+            }
+
+            Location destination = arena.getSpawn("RED", 1);
+
+            if (destination == null) {
+                destination = arena.getSpawn("FFA", 1);
+            }
+
+            if (destination == null) {
+                destination = arena.getSpawn("SPECTATOR", 1);
+            }
+
+            if (destination == null) {
+                player.sendMessage(plugin.color("&cThat arena has no spawn points."));
+                return;
+            }
+
+            player.teleport(destination);
+            player.sendMessage(plugin.color("&aTeleported to arena &f" + arena.getName() + "&a."));
+        } else {
+            player.sendMessage(plugin.color("&cInvalid arena command."));
+        }
+    }
+
+    private void arenaSpawn(Player player, String[] args) {
+        if (args.length < 4) {
+            player.sendMessage(plugin.color("&cUsage: /pvp arena spawn <add|set|delete|tp|list> <arena> <type> [index]"));
+            return;
+        }
+
+        String operation = args[2].toLowerCase();
+        String arenaName = args[3];
+        Arena arena = plugin.getArenaManager().get(arenaName);
+
+        if (arena == null) {
+            player.sendMessage(plugin.color("&cArena not found."));
+            return;
+        }
+
+        if (operation.equals("list")) {
+            if (args.length > 4) {
+                showSpawnList(player, arena, args[4]);
+            } else {
+                showSpawnList(player, arena, "RED");
+                showSpawnList(player, arena, "BLUE");
+                showSpawnList(player, arena, "FFA");
+                showSpawnList(player, arena, "SPECTATOR");
+            }
+            return;
+        }
+
+        if (args.length < 5) {
+            player.sendMessage(plugin.color("&cA spawn type is required: RED, BLUE, FFA, or SPECTATOR."));
+            return;
+        }
+
+        String type = args[4].toUpperCase();
+
+        if (!type.equals("RED") &&
+                !type.equals("BLUE") &&
+                !type.equals("FFA") &&
+                !type.equals("SPECTATOR")) {
+            player.sendMessage(plugin.color("&cSpawn type must be RED, BLUE, FFA, or SPECTATOR."));
+            return;
+        }
+
+        int index = 1;
+
+        if (args.length > 5) {
+            try {
+                index = Integer.parseInt(args[5]);
+            } catch (NumberFormatException exception) {
+                player.sendMessage(plugin.color("&cThe spawn index must be a positive number."));
+                return;
+            }
+        }
+
+        if (index < 1) {
+            player.sendMessage(plugin.color("&cThe spawn index must be a positive number."));
+            return;
+        }
+
+        if (operation.equals("add")) {
+            boolean changed = plugin.getArenaManager().addSpawn(
+                    arenaName,
+                    type,
+                    player.getLocation()
+            );
+
+            player.sendMessage(changed
+                    ? plugin.color("&aAdded a new &f" + type + " &aspawn.")
+                    : plugin.color("&cThe spawn could not be added. The arena may be occupied."));
+        } else if (operation.equals("set") || operation.equals("move")) {
+            boolean changed = plugin.getArenaManager().setSpawn(
+                    arenaName,
+                    type,
+                    index,
+                    player.getLocation()
+            );
+
+            player.sendMessage(changed
+                    ? plugin.color("&aSet &f" + type + " #" + index + " &ato your current location.")
+                    : plugin.color("&cThat spawn cannot be set. Use the next available index or edit an existing spawn."));
+        } else if (operation.equals("delete") || operation.equals("remove")) {
+            boolean changed = plugin.getArenaManager().removeSpawn(
+                    arenaName,
+                    type,
+                    index
+            );
+
+            player.sendMessage(changed
+                    ? plugin.color("&aDeleted &f" + type + " #" + index + "&a.")
+                    : plugin.color("&cThat spawn does not exist or the arena is occupied."));
+        } else if (operation.equals("tp")) {
+            Location location = plugin.getArenaManager().getSpawn(
+                    arenaName,
+                    type,
+                    index
+            );
+
+            if (location == null) {
+                player.sendMessage(plugin.color("&cThat spawn does not exist."));
+                return;
+            }
+
+            player.teleport(location);
+            player.sendMessage(plugin.color("&aTeleported to &f" + type + " #" + index + "&a."));
+        } else {
+            player.sendMessage(plugin.color("&cSpawn operation must be add, set, move, delete, remove, tp, or list."));
+        }
+    }
+
+    private void showSpawnList(Player player, Arena arena, String type) {
+        String normalized = type.toUpperCase();
+        int count = arena.getSpawnCount(normalized);
+
+        player.sendMessage(plugin.color("&d" + normalized + " spawns for &f" + arena.getName() + "&d:"));
+
+        if (count == 0) {
+            player.sendMessage(plugin.color("&7None"));
+            return;
+        }
+
+        for (int index = 1; index <= count; index++) {
+            Location location = arena.getSpawn(normalized, index);
+
+            if (location == null || location.getWorld() == null) {
+                continue;
+            }
+
+            player.sendMessage(plugin.color(
+                    "&f#" + index +
+                            " &7- &d" + location.getWorld().getName() +
+                            " &7(" + location.getBlockX() +
+                            ", " + location.getBlockY() +
+                            ", " + location.getBlockZ() + ")"
+            ));
+        }
+    }
+        if (!player.hasPermission("starrypvp.admin.arena")) {
+            player.sendMessage(plugin.message("no-permission"));
+            return;
+        }
+
+        if (args.length < 2) {
+            player.sendMessage(plugin.color("&f/pvp arena create <name> <DUEL|TEAM|FFA>"));
+            player.sendMessage(plugin.color("&f/pvp arena delete <name>"));
             player.sendMessage(plugin.color("&f/pvp arena list"));
             player.sendMessage(plugin.color("&f/pvp arena addspawn <name> <RED|BLUE|FFA|SPECTATOR>"));
             player.sendMessage(plugin.color("&f/pvp arena tp <name>"));
@@ -550,7 +811,140 @@ public final class PvpCommand implements CommandExecutor, TabCompleter {
         action.run();
     }
 
-        public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+    public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        if (args.length == 1) {
+            List<String> values = new ArrayList<String>(Arrays.asList(
+                    "help", "duel", "duels", "accept", "deny", "leave", "forfeit",
+                    "practice", "random", "stats", "leaderboard", "top",
+                    "spectate", "view", "unstuck", "party", "team", "ffa"
+            ));
+
+            if (sender.hasPermission("starrypvp.admin")) {
+                values.addAll(Arrays.asList("toggle", "end", "reset", "reload", "arena"));
+            }
+
+            return filter(values, args[0]);
+        }
+
+        if (args.length == 2 &&
+                (args[0].equalsIgnoreCase("spectate") ||
+                        args[0].equalsIgnoreCase("view"))) {
+            List<String> values = onlinePlayerNames();
+            values.add("leave");
+            values.add("exit");
+            values.add("stop");
+            return filter(values, args[1]);
+        }
+
+        if (args.length == 2 &&
+                (args[0].equalsIgnoreCase("duel") ||
+                        args[0].equalsIgnoreCase("duels") ||
+                        args[0].equalsIgnoreCase("challenge") ||
+                        args[0].equalsIgnoreCase("accept") ||
+                        args[0].equalsIgnoreCase("deny") ||
+                        args[0].equalsIgnoreCase("stats") ||
+                        args[0].equalsIgnoreCase("end"))) {
+            return filter(onlinePlayerNames(), args[1]);
+        }
+
+        if (args.length == 3 &&
+                (args[0].equalsIgnoreCase("duel") ||
+                        args[0].equalsIgnoreCase("duels") ||
+                        args[0].equalsIgnoreCase("challenge"))) {
+            return filter(Arrays.asList("2v2", "3v3", "5v5"), args[2]);
+        }
+
+        if (args.length == 2 && args[0].equalsIgnoreCase("party")) {
+            return filter(Arrays.asList(
+                    "create", "disband", "invite", "accept", "kick", "leave", "match"
+            ), args[1]);
+        }
+
+        if (args.length == 2 && args[0].equalsIgnoreCase("ffa")) {
+            return filter(Arrays.asList("join", "leave", "custom"), args[1]);
+        }
+
+        if (args.length == 2 && args[0].equalsIgnoreCase("team")) {
+            return filter(Arrays.asList("red", "blue"), args[1]);
+        }
+
+        if (args.length == 2 && args[0].equalsIgnoreCase("arena")) {
+            return filter(Arrays.asList(
+                    "create", "delete", "list", "info", "addspawn", "spawn", "tp"
+            ), args[1]);
+        }
+
+        if (args.length == 3 &&
+                args[0].equalsIgnoreCase("party") &&
+                (args[1].equalsIgnoreCase("invite") ||
+                        args[1].equalsIgnoreCase("kick") ||
+                        args[1].equalsIgnoreCase("match"))) {
+            return filter(onlinePlayerNames(), args[2]);
+        }
+
+        if (args.length == 3 &&
+                args[0].equalsIgnoreCase("arena") &&
+                args[1].equalsIgnoreCase("spawn")) {
+            return filter(Arrays.asList(
+                    "add", "set", "move", "delete", "remove", "tp", "list"
+            ), args[2]);
+        }
+
+        if (args.length == 3 &&
+                args[0].equalsIgnoreCase("arena") &&
+                (args[1].equalsIgnoreCase("delete") ||
+                        args[1].equalsIgnoreCase("info") ||
+                        args[1].equalsIgnoreCase("list") ||
+                        args[1].equalsIgnoreCase("tp") ||
+                        args[1].equalsIgnoreCase("addspawn"))) {
+            return filter(arenaNames(), args[2]);
+        }
+
+        if (args.length == 4 &&
+                args[0].equalsIgnoreCase("arena") &&
+                args[1].equalsIgnoreCase("spawn")) {
+            return filter(arenaNames(), args[3]);
+        }
+
+        if (args.length == 4 &&
+                args[0].equalsIgnoreCase("arena") &&
+                args[1].equalsIgnoreCase("addspawn")) {
+            return filter(Arrays.asList("RED", "BLUE", "FFA", "SPECTATOR"), args[3]);
+        }
+
+        if (args.length == 5 &&
+                args[0].equalsIgnoreCase("arena") &&
+                args[1].equalsIgnoreCase("spawn")) {
+            return filter(Arrays.asList("RED", "BLUE", "FFA", "SPECTATOR"), args[4]);
+        }
+
+        if (args.length == 6 &&
+                args[0].equalsIgnoreCase("arena") &&
+                args[1].equalsIgnoreCase("spawn")) {
+            Arena arena = plugin.getArenaManager().get(args[3]);
+
+            if (arena == null) {
+                return Collections.emptyList();
+            }
+
+            List<String> indexes = new ArrayList<String>();
+            int count = arena.getSpawnCount(args[4]);
+
+            for (int index = 1; index <= count; index++) {
+                indexes.add(String.valueOf(index));
+            }
+
+            if (args[2].equalsIgnoreCase("set") ||
+                    args[2].equalsIgnoreCase("move")) {
+                indexes.add(String.valueOf(count + 1));
+            }
+
+            return filter(indexes, args[5]);
+        }
+
+        return Collections.emptyList();
+    }
+
         if (args.length == 1) {
             List<String> values = new ArrayList<String>(Arrays.asList(
                     "help", "duel", "accept", "deny", "leave", "forfeit",
@@ -632,6 +1026,16 @@ public final class PvpCommand implements CommandExecutor, TabCompleter {
         }
 
         return Collections.emptyList();
+    }
+
+    private List<String> arenaNames() {
+        List<String> names = new ArrayList<String>();
+
+        for (Arena arena : plugin.getArenaManager().all()) {
+            names.add(arena.getName());
+        }
+
+        return names;
     }
 
     private List<String> onlinePlayerNames() {
