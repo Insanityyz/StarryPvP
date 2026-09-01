@@ -63,7 +63,103 @@ public final class Arena {
     }
 
     public void setSpectatorSpawn(Location spectatorSpawn) {
-        this.spectatorSpawn = spectatorSpawn.clone();
+        this.spectatorSpawn = spectatorSpawn == null ? null : spectatorSpawn.clone();
+    }
+
+    public boolean setSpawn(String type, int index, Location location) {
+        if (location == null || index < 1) {
+            return false;
+        }
+
+        if (type.equalsIgnoreCase("SPECTATOR")) {
+            if (index != 1) {
+                return false;
+            }
+
+            spectatorSpawn = location.clone();
+            return true;
+        }
+
+        List<Location> spawns = mutableSpawns(type);
+
+        if (spawns == null || index > spawns.size() + 1) {
+            return false;
+        }
+
+        if (index == spawns.size() + 1) {
+            spawns.add(location.clone());
+        } else {
+            spawns.set(index - 1, location.clone());
+        }
+
+        return true;
+    }
+
+    public boolean removeSpawn(String type, int index) {
+        if (index < 1) {
+            return false;
+        }
+
+        if (type.equalsIgnoreCase("SPECTATOR")) {
+            if (index != 1 || spectatorSpawn == null) {
+                return false;
+            }
+
+            spectatorSpawn = null;
+            return true;
+        }
+
+        List<Location> spawns = mutableSpawns(type);
+
+        if (spawns == null || index > spawns.size()) {
+            return false;
+        }
+
+        spawns.remove(index - 1);
+        return true;
+    }
+
+    public Location getSpawn(String type, int index) {
+        if (index < 1) {
+            return null;
+        }
+
+        if (type.equalsIgnoreCase("SPECTATOR")) {
+            return index == 1 && spectatorSpawn != null ? spectatorSpawn.clone() : null;
+        }
+
+        List<Location> spawns = mutableSpawns(type);
+
+        if (spawns == null || index > spawns.size()) {
+            return null;
+        }
+
+        return spawns.get(index - 1).clone();
+    }
+
+    public int getSpawnCount(String type) {
+        if (type.equalsIgnoreCase("SPECTATOR")) {
+            return spectatorSpawn == null ? 0 : 1;
+        }
+
+        List<Location> spawns = mutableSpawns(type);
+        return spawns == null ? 0 : spawns.size();
+    }
+
+    private List<Location> mutableSpawns(String type) {
+        if (type.equalsIgnoreCase("RED")) {
+            return redSpawns;
+        }
+
+        if (type.equalsIgnoreCase("BLUE")) {
+            return blueSpawns;
+        }
+
+        if (type.equalsIgnoreCase("FFA")) {
+            return ffaSpawns;
+        }
+
+        return null;
     }
 
     public boolean isOccupied() {
