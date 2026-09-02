@@ -55,8 +55,20 @@ public final class SetupGui implements Listener {
 
     public void open(Player player, Player target, ChallengeType type) {
         Session session = new Session(target == null ? null : target.getUniqueId(), type);
+        session.getSettings().setBestOf(plugin.getQueueManager().getBestOf(player));
+        session.getSettings().setArenaName(plugin.getQueueManager().getPreferredArena(player));
         sessions.put(player.getUniqueId(), session);
         render(player, session);
+        com.starrypvp.util.SoundUtil.menuOpen(player);
+    }
+
+    public void openReply(Player player, Player challenger, ChallengeType type, MatchSettings base) {
+        Session session = new Session(challenger.getUniqueId(), type);
+        session.getSettings().setBestOf(base.getBestOf());
+        session.getSettings().setArenaName(base.getArenaName());
+        sessions.put(player.getUniqueId(), session);
+        render(player, session);
+        com.starrypvp.util.SoundUtil.menuOpen(player);
     }
 
     private void render(Player player, Session session) {
@@ -99,6 +111,47 @@ public final class SetupGui implements Listener {
                 ChatColor.GRAY + "Enabled gives two stacks",
                 ChatColor.GRAY + "of team-colored wool.",
                 ChatColor.YELLOW + "Click to toggle"
+        ));
+
+        inventory.setItem(14, ItemUtil.named(
+                Material.BOW,
+                ChatColor.AQUA + "Bow and Arrows",
+                toggle(settings.isBow()),
+                ChatColor.GRAY + "Adds a bow and 16 arrows.",
+                ChatColor.YELLOW + "Click to toggle"
+        ));
+
+        inventory.setItem(23, ItemUtil.named(
+                Material.SHEARS,
+                ChatColor.AQUA + "Shears",
+                toggle(settings.isShears()),
+                ChatColor.GRAY + "Breaks wool almost instantly.",
+                ChatColor.YELLOW + "Click to toggle"
+        ));
+
+        inventory.setItem(24, ItemUtil.named(
+                Material.SKULL_ITEM,
+                ChatColor.LIGHT_PURPLE + "Opponent Picks Kit",
+                toggle(settings.isOpponentPicksKit()),
+                ChatColor.GRAY + "Sends this menu to them instead,",
+                ChatColor.GRAY + "and they choose the loadout.",
+                ChatColor.YELLOW + "Click to toggle"
+        ));
+
+        inventory.setItem(25, ItemUtil.named(
+                Material.BOOK,
+                ChatColor.LIGHT_PURPLE + "Best of " + settings.getBestOf(),
+                ChatColor.GRAY + "Cycles 1, 3, and 5.",
+                ChatColor.GRAY + "Only the final round counts for stats.",
+                ChatColor.YELLOW + "Click to change"
+        ));
+
+        inventory.setItem(32, ItemUtil.named(
+                Material.MAP,
+                ChatColor.LIGHT_PURPLE + "Map: " +
+                        (settings.getArenaName() == null ? "Random" : settings.getArenaName()),
+                ChatColor.GRAY + "Cycles every ready arena.",
+                ChatColor.YELLOW + "Click to change"
         ));
 
         inventory.setItem(15, ItemUtil.named(
@@ -194,8 +247,20 @@ public final class SetupGui implements Listener {
         }
 
         int slot = event.getRawSlot();
+        com.starrypvp.util.SoundUtil.click(player);
 
-        if (slot == 10) {
+        if (slot == 14) {
+            session.getSettings().setBow(!session.getSettings().isBow());
+        } else if (slot == 23) {
+            session.getSettings().setShears(!session.getSettings().isShears());
+        } else if (slot == 24) {
+            session.getSettings().setOpponentPicksKit(!session.getSettings().isOpponentPicksKit());
+        } else if (slot == 25) {
+            int current = session.getSettings().getBestOf();
+            session.getSettings().setBestOf(current == 1 ? 3 : current == 3 ? 5 : 1);
+        } else if (slot == 32) {
+            cycleArena(session);
+        } else if (slot == 10) {
             session.getSettings().setArmorTier(session.getSettings().getArmorTier().next());
         } else if (slot == 11) {
             session.getSettings().setWeaponMode(session.getSettings().getWeaponMode().next());
@@ -230,6 +295,40 @@ public final class SetupGui implements Listener {
         }
 
         render(player, session);
+    }
+
+    private void cycleArena(Session session) {
+        com.starrypvp.arena.Arena.Mode mode = session.getType() == ChallengeType.TEAM
+                ? com.starrypvp.arena.Arena.Mode.TEAM
+                : com.starrypvp.arena.Arena.Mode.DUEL;
+
+        java.util.List<String> names = new java.util.ArrayList<String>();
+
+        for (com.starrypvp.arena.Arena arena : plugin.getArenaManager().all()) {
+            if (arena.getMode() == mode && arena.isReady()) {
+                names.add(arena.getName());
+            }
+        }
+
+        if (names.isEmpty()) {
+            session.getSettings().setArenaName(null);
+            return;
+        }
+
+        String current = session.getSettings().getArenaName();
+
+        if (current == null) {
+            session.getSettings().setArenaName(names.get(0));
+            return;
+        }
+
+        int index = names.indexOf(current);
+
+        if (index < 0 || index == names.size() - 1) {
+            session.getSettings().setArenaName(null);
+        } else {
+            session.getSettings().setArenaName(names.get(index + 1));
+        }
     }
 
     private String armorDescription(MatchSettings.ArmorTier tier) {
