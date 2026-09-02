@@ -31,6 +31,19 @@ public final class ItemUtil {
         return item;
     }
 
+    public static void giveExtras(Player player, MatchSettings settings) {
+        if (settings.isBow()) {
+            player.getInventory().addItem(new ItemStack(Material.BOW));
+            player.getInventory().addItem(new ItemStack(Material.ARROW, 16));
+        }
+
+        if (settings.isShears()) {
+            player.getInventory().addItem(new ItemStack(Material.SHEARS));
+        }
+
+        player.updateInventory();
+    }
+
     public static void giveKit(Player player, MatchSettings settings, boolean redTeam) {
         player.getInventory().clear();
         player.getInventory().setArmorContents(new ItemStack[4]);
