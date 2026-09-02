@@ -3,10 +3,12 @@ package com.starrypvp;
 import com.starrypvp.arena.ArenaManager;
 import com.starrypvp.command.PvpCommand;
 import com.starrypvp.data.DataManager;
+import com.starrypvp.gui.MenuGui;
 import com.starrypvp.gui.SetupGui;
 import com.starrypvp.listener.GameListener;
 import com.starrypvp.match.MatchManager;
 import com.starrypvp.party.PartyManager;
+import com.starrypvp.queue.QueueManager;
 import com.starrypvp.arena.ArenaProtectionManager;
 import com.starrypvp.data.RecoveryManager;
 import org.bukkit.ChatColor;
@@ -21,7 +23,9 @@ public final class StarryPvP extends JavaPlugin {
     private ArenaManager arenaManager;
     private PartyManager partyManager;
     private MatchManager matchManager;
+    private QueueManager queueManager;
     private SetupGui setupGui;
+    private MenuGui menuGui;
     private RecoveryManager recoveryManager;
     private ArenaProtectionManager arenaProtectionManager;
     private YamlConfiguration messages;
@@ -39,13 +43,16 @@ public final class StarryPvP extends JavaPlugin {
         recoveryManager = new RecoveryManager(this);
         arenaProtectionManager = new ArenaProtectionManager(this);
         matchManager = new MatchManager(this);
+        queueManager = new QueueManager(this);
         setupGui = new SetupGui(this);
+        menuGui = new MenuGui(this);
 
         PvpCommand command = new PvpCommand(this);
         getCommand("pvp").setExecutor(command);
         getCommand("pvp").setTabCompleter(command);
 
         getServer().getPluginManager().registerEvents(setupGui, this);
+        getServer().getPluginManager().registerEvents(menuGui, this);
         getServer().getPluginManager().registerEvents(recoveryManager, this);
         getServer().getPluginManager().registerEvents(arenaProtectionManager, this);
         getServer().getPluginManager().registerEvents(new GameListener(this), this);
@@ -55,6 +62,9 @@ public final class StarryPvP extends JavaPlugin {
     public void onDisable() {
         if (matchManager != null) {
             matchManager.shutdown();
+        }
+        if (queueManager != null) {
+            queueManager.clear();
         }
         if (dataManager != null) {
             dataManager.save();
@@ -111,9 +121,18 @@ public final class StarryPvP extends JavaPlugin {
         return matchManager;
     }
 
+    public QueueManager getQueueManager() {
+        return queueManager;
+    }
+
     public SetupGui getSetupGui() {
         return setupGui;
     }
+
+    public MenuGui getMenuGui() {
+        return menuGui;
+    }
+
     public RecoveryManager getRecoveryManager() {
         return recoveryManager;
     }
