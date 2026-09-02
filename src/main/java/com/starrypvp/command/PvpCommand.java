@@ -336,8 +336,25 @@ public final class PvpCommand implements CommandExecutor, TabCompleter {
         String action = args[1].toLowerCase();
 
         if (action.equals("create")) {
-            plugin.getPartyManager().create(player);
-            player.sendMessage(plugin.color("&aYour party was created."));
+            int capacity = 4;
+
+            if (args.length > 2) {
+                try {
+                    capacity = Integer.parseInt(args[2]);
+                } catch (NumberFormatException exception) {
+                    capacity = 4;
+                }
+            }
+
+            if (capacity < 2 || capacity > 5) {
+                capacity = 4;
+            }
+
+            plugin.getPartyManager().create(player, capacity);
+            player.sendMessage(plugin.color("&aYour party was created. &7(" + capacity + " slots)"));
+            player.sendMessage(plugin.color("&7Invite with &f/pvp party invite <player>&7."));
+            Bukkit.broadcastMessage(plugin.color("&8[&dStarryPvP&8] &d" + player.getName() +
+                    " &fstarted a party looking for &d" + (capacity - 1) + " &fmore players."));
         } else if (action.equals("accept")) {
             player.sendMessage(plugin.getPartyManager().acceptInvite(player)
                     ? plugin.color("&aYou joined the party.")
@@ -761,7 +778,8 @@ public final class PvpCommand implements CommandExecutor, TabCompleter {
         if (args.length == 1) {
             List<String> values = new ArrayList<String>(Arrays.asList(
                     "help", "duel", "duels", "accept", "deny", "leave", "forfeit",
-                    "practice", "random", "stats", "leaderboard", "top",
+                    "practice", "random", "stats", "leaderboard", "top", "menu",
+                    "modes", "play", "cancel",
                     "spectate", "view", "unstuck", "party", "team", "ffa"
             ));
 
