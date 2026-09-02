@@ -44,6 +44,54 @@ public final class MatchSettings implements Cloneable {
         }
     }
 
+    private boolean bow;
+    private boolean shears;
+    private boolean opponentPicksKit;
+    private int bestOf = 1;
+    private String arenaName;
+
+    public boolean isBow() {
+        return bow;
+    }
+
+    public void setBow(boolean bow) {
+        this.bow = bow;
+    }
+
+    public boolean isShears() {
+        return shears;
+    }
+
+    public void setShears(boolean shears) {
+        this.shears = shears;
+    }
+
+    public boolean isOpponentPicksKit() {
+        return opponentPicksKit;
+    }
+
+    public void setOpponentPicksKit(boolean opponentPicksKit) {
+        this.opponentPicksKit = opponentPicksKit;
+    }
+
+    public int getBestOf() {
+        return bestOf;
+    }
+
+    public void setBestOf(int bestOf) {
+        if (bestOf == 1 || bestOf == 3 || bestOf == 5) {
+            this.bestOf = bestOf;
+        }
+    }
+
+    public String getArenaName() {
+        return arenaName;
+    }
+
+    public void setArenaName(String arenaName) {
+        this.arenaName = arenaName;
+    }
+
     private ArmorTier armorTier = ArmorTier.IRON;
     private WeaponMode weaponMode = WeaponMode.BOTH;
     private HealingMode healingMode = HealingMode.GAPPLE;
