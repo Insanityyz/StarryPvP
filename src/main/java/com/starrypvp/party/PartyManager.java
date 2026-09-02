@@ -14,6 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class PartyManager {
     public static final class Party {
         private UUID leader;
+        private int capacity = 4;
         private final Set<UUID> members = new LinkedHashSet<UUID>();
 
         private Party(UUID leader) {
@@ -27,6 +28,18 @@ public final class PartyManager {
 
         public Set<UUID> getMembers() {
             return new LinkedHashSet<UUID>(members);
+        }
+
+        public int getCapacity() {
+            return capacity;
+        }
+
+        public int getSize() {
+            return members.size();
+        }
+
+        public boolean isFull() {
+            return members.size() >= capacity;
         }
     }
 
@@ -45,6 +58,27 @@ public final class PartyManager {
         return party;
     }
 
+    public Party create(Player player, int capacity) {
+        Party party = create(player);
+        setCapacity(player, capacity);
+        return party;
+    }
+
+    public boolean setCapacity(Player leader, int capacity) {
+        Party party = membership.get(leader.getUniqueId());
+
+        if (party == null || !party.leader.equals(leader.getUniqueId())) {
+            return false;
+        }
+
+        if (capacity < 2 || capacity > 5 || capacity < party.members.size()) {
+            return false;
+        }
+
+        party.capacity = capacity;
+        return true;
+    }
+
     public Party get(Player player) {
         return membership.get(player.getUniqueId());
     }
@@ -58,6 +92,9 @@ public final class PartyManager {
         if (party == null || !party.leader.equals(leader.getUniqueId())) {
             return false;
         }
+        if (party.isFull()) {
+            return false;
+        }
         invitations.put(target.getUniqueId(), leader.getUniqueId());
         return true;
     }
@@ -69,7 +106,7 @@ public final class PartyManager {
         }
 
         Party party = membership.get(leaderId);
-        if (party == null) {
+        if (party == null || party.isFull()) {
             return false;
         }
 
