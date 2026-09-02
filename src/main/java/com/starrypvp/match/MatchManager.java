@@ -6,6 +6,7 @@ import com.starrypvp.gui.SetupGui;
 import com.starrypvp.party.PartyManager;
 import com.starrypvp.util.InventorySnapshot;
 import com.starrypvp.util.ItemUtil;
+import com.starrypvp.util.SoundUtil;
 import net.md_5.bungee.api.chat.ClickEvent;
 import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.Bukkit;
@@ -66,6 +67,9 @@ public final class MatchManager {
     private final Queue<UUID> practiceQueue = new ArrayDeque<UUID>();
     private final Map<UUID, InventorySnapshot> ffaSnapshots = new ConcurrentHashMap<UUID, InventorySnapshot>();
     private final Set<UUID> publicFfa = Collections.newSetFromMap(new ConcurrentHashMap<UUID, Boolean>());
+    private final Set<UUID> frozen = Collections.newSetFromMap(new ConcurrentHashMap<UUID, Boolean>());
+    private final Map<UUID, String[]> matchTeams = new ConcurrentHashMap<UUID, String[]>();
+    private final Map<String, int[]> seriesScores = new ConcurrentHashMap<String, int[]>();
     private boolean duelRequestsEnabled = true;
     private Arena publicFfaArena;
 
@@ -82,6 +86,16 @@ public final class MatchManager {
             sender.sendMessage(plugin.message("player-not-found"));
             return;
         }
+
+        if (session.getSettings().isOpponentPicksKit()) {
+            sender.sendMessage(plugin.color("&dYou let &f" + target.getName() + " &dchoose the loadout."));
+            target.sendMessage(plugin.color("&d" + sender.getName() + " &fwants to duel and let you pick the kit."));
+            SoundUtil.select(sender);
+            SoundUtil.matchFound(target);
+            plugin.getSetupGui().openReply(target, sender, session.getType(), session.getSettings());
+            return;
+        }
+
         sendRequest(sender, target, session.getSettings(), session.getType());
     }
 
@@ -220,7 +234,7 @@ public final class MatchManager {
 
     public boolean startMatch(Match.Type type, Arena.Mode arenaMode, MatchSettings settings,
                               Collection<Player> redPlayers, Collection<Player> bluePlayers) {
-        Arena arena = plugin.getArenaManager().acquire(arenaMode);
+        Arena arena = plugin.getArenaManager().acquire(arenaMode, settings.getArenaName());
 
         if (arena == null) {
             for (Player player : redPlayers) {
@@ -336,11 +350,123 @@ public final class MatchManager {
             player.teleport(blueSpawns.get(blueIndex++ % blueSpawns.size()));
         }
 
-        int countdown = plugin.getConfig().getInt("match.countdown-seconds", 3);
+        applyMatchTeams(match);
+        beginCountdown(match);
+    }
+
+    private void beginCountdown(final Match match) {
+        for (UUID uuid : match.getParticipants()) {
+            frozen.add(uuid);
+        }
+
+        final int graceSeconds = Math.max(0, plugin.getConfig().getInt("match.load-grace-seconds", 8));
+        final int countdownSeconds = Math.max(1, plugin.getConfig().getInt("match.countdown-seconds", 3));
+
+        broadcastToMatch(match, plugin.color("&7Waiting for everyone to finish loading in..."));
+
+        new org.bukkit.scheduler.BukkitRunnable() {
+            private int waited;
+            private int remaining = countdownSeconds;
+            private boolean counting;
+
+            public void run() {
+                if (match.isEnded() || !allParticipantsOnline(match)) {
+                    releaseFreeze(match);
+                    cancel();
+                    return;
+                }
+
+                if (!counting) {
+                    boolean loaded = allParticipantsLoaded(match);
+
+                    if (!loaded && waited < graceSeconds) {
+                        waited++;
+                        return;
+                    }
+
+                    counting = true;
+                    broadcastToMatch(match, loaded
+                            ? plugin.color("&aEveryone is loaded in.")
+                            : plugin.color("&eStarting anyway after " + graceSeconds + " seconds."));
+                    return;
+                }
+
+                if (remaining > 0) {
+                    broadcastToMatch(match, plugin.color("&e&l" + remaining + "..."));
+
+                    for (UUID uuid : match.getParticipants()) {
+                        SoundUtil.countdownTick(Bukkit.getPlayer(uuid));
+                    }
+
+                    remaining--;
+                    return;
+                }
+
+                releaseFreeze(match);
+                broadcastToMatch(match, plugin.color("&a&lFIGHT!"));
+
+                for (UUID uuid : match.getParticipants()) {
+                    SoundUtil.countdownGo(Bukkit.getPlayer(uuid));
+                }
+
+                cancel();
+            }
+        }.runTaskTimer(plugin, 20L, 20L);
+    }
+
+    private boolean allParticipantsOnline(Match match) {
+        for (UUID uuid : match.getParticipants()) {
+            Player player = Bukkit.getPlayer(uuid);
+            if (player == null || !player.isOnline()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean allParticipantsLoaded(Match match) {
+        for (UUID uuid : match.getParticipants()) {
+            Player player = Bukkit.getPlayer(uuid);
+
+            if (player == null || player.isDead()) {
+                return false;
+            }
+
+            Location location = player.getLocation();
+
+            if (location.getWorld() == null) {
+                return false;
+            }
+
+            if (!location.getWorld().isChunkLoaded(location.getBlockX() >> 4, location.getBlockZ() >> 4)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void releaseFreeze(Match match) {
+        for (UUID uuid : match.getParticipants()) {
+            frozen.remove(uuid);
+        }
+    }
+
+    public boolean isFrozen(Player player) {
+        return frozen.contains(player.getUniqueId());
+    }
+
+    private void broadcastToMatch(Match match, String message) {
         for (UUID uuid : match.getParticipants()) {
             Player player = Bukkit.getPlayer(uuid);
             if (player != null) {
-                player.sendMessage(plugin.color("&aMatch starting in &f" + countdown + "&a seconds."));
+                player.sendMessage(message);
+            }
+        }
+
+        for (UUID uuid : match.getSpectators()) {
+            Player spectator = Bukkit.getPlayer(uuid);
+            if (spectator != null) {
+                spectator.sendMessage(message);
             }
         }
     }
@@ -373,17 +499,31 @@ public final class MatchManager {
         }
 
         ItemUtil.giveKit(player, match.getSettings(), red);
-        applyScoreboard(player, match);
     }
+
     
-    private void applyScoreboard(Player player, Match match) {
-        Scoreboard scoreboard = Bukkit.getScoreboardManager().getNewScoreboard();
-        Team red = scoreboard.registerNewTeam("starry-red");
-        Team blue = scoreboard.registerNewTeam("starry-blue");
+    private void applyMatchTeams(Match match) {
+        Scoreboard board = Bukkit.getScoreboardManager().getMainScoreboard();
+        String suffix = match.getId().toString().replace("-", "").substring(0, 6);
+        String redName = "spR" + suffix;
+        String blueName = "spB" + suffix;
+
+        Team red = board.getTeam(redName);
+        if (red == null) {
+            red = board.registerNewTeam(redName);
+        }
+
+        Team blue = board.getTeam(blueName);
+        if (blue == null) {
+            blue = board.registerNewTeam(blueName);
+        }
+
         red.setPrefix(ChatColor.RED.toString());
         blue.setPrefix(ChatColor.BLUE.toString());
         red.setAllowFriendlyFire(false);
         blue.setAllowFriendlyFire(false);
+        red.setCanSeeFriendlyInvisibles(true);
+        blue.setCanSeeFriendlyInvisibles(true);
 
         for (UUID uuid : match.getRed()) {
             Player member = Bukkit.getPlayer(uuid);
@@ -399,7 +539,144 @@ public final class MatchManager {
             }
         }
 
-        player.setScoreboard(scoreboard);
+        matchTeams.put(match.getId(), new String[]{redName, blueName});
+    }
+
+    private void clearMatchTeams(Match match) {
+        String[] names = matchTeams.remove(match.getId());
+
+        if (names == null) {
+            return;
+        }
+
+        Scoreboard board = Bukkit.getScoreboardManager().getMainScoreboard();
+
+        for (String name : names) {
+            Team team = board.getTeam(name);
+
+            if (team == null) {
+                continue;
+            }
+
+            for (String entry : new java.util.HashSet<String>(team.getEntries())) {
+                team.removeEntry(entry);
+            }
+
+            try {
+                team.unregister();
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    private void announceVictory(Match match, Set<UUID> winners) {
+        if (winners.isEmpty()) {
+            return;
+        }
+
+        List<String> templates = plugin.getConfig().getStringList("match.win-messages");
+
+        if (templates.isEmpty()) {
+            templates = new ArrayList<String>();
+            templates.add("&d{winners} &fdefeated &d{losers}&f!");
+        }
+
+        String template = templates.get((int) (Math.random() * templates.size()));
+
+        Set<UUID> losers = new java.util.LinkedHashSet<UUID>(match.getParticipants());
+        losers.removeAll(winners);
+
+        String message = plugin.color(template
+                .replace("{winners}", teamNames(match, winners))
+                .replace("{losers}", teamNames(match, losers)));
+
+        if (plugin.getConfig().getBoolean("match.broadcast-results", true)) {
+            Bukkit.broadcastMessage(plugin.color("&8[&dStarryPvP&8] &r") + message);
+        } else {
+            broadcastToMatch(match, message);
+        }
+    }
+
+    private String teamNames(Match match, Collection<UUID> players) {
+        StringBuilder builder = new StringBuilder();
+
+        for (UUID uuid : players) {
+            String name = Bukkit.getOfflinePlayer(uuid).getName();
+
+            if (name == null) {
+                continue;
+            }
+
+            if (builder.length() > 0) {
+                builder.append(ChatColor.WHITE).append(", ");
+            }
+
+            builder.append(match.getRed().contains(uuid) ? ChatColor.RED : ChatColor.BLUE).append(name);
+        }
+
+        return builder.length() == 0 ? "Nobody" : builder.toString();
+    }
+
+    private String seriesKey(Match match) {
+        return seriesKey(match.getRed(), match.getBlue());
+    }
+
+    private String seriesKey(Collection<UUID> red, Collection<UUID> blue) {
+        List<String> names = new ArrayList<String>();
+
+        for (UUID uuid : red) {
+            names.add(uuid.toString());
+        }
+
+        for (UUID uuid : blue) {
+            names.add(uuid.toString());
+        }
+
+        Collections.sort(names);
+        StringBuilder builder = new StringBuilder();
+
+        for (String name : names) {
+            builder.append(name);
+        }
+
+        return builder.toString();
+    }
+
+    private void scheduleNextRound(final Match match) {
+        final List<UUID> red = new ArrayList<UUID>(match.getRed());
+        final List<UUID> blue = new ArrayList<UUID>(match.getBlue());
+        final MatchSettings settings = match.getSettings().clone();
+        final Match.Type type = match.getType();
+        final Arena.Mode mode = match.getArena().getMode();
+        long delay = plugin.getConfig().getLong("match.restore-delay-ticks", 40L) + 60L;
+
+        Bukkit.getScheduler().runTaskLater(plugin, new Runnable() {
+            public void run() {
+                List<Player> redPlayers = new ArrayList<Player>();
+                List<Player> bluePlayers = new ArrayList<Player>();
+
+                for (UUID uuid : red) {
+                    Player player = Bukkit.getPlayer(uuid);
+                    if (player != null && player.isOnline()) {
+                        redPlayers.add(player);
+                    }
+                }
+
+                for (UUID uuid : blue) {
+                    Player player = Bukkit.getPlayer(uuid);
+                    if (player != null && player.isOnline()) {
+                        bluePlayers.add(player);
+                    }
+                }
+
+                if (redPlayers.size() != red.size() || bluePlayers.size() != blue.size()) {
+                    seriesScores.remove(seriesKey(red, blue));
+                    return;
+                }
+
+                startMatch(type, mode, settings, redPlayers, bluePlayers);
+            }
+        }, delay);
     }
 
     public void markDirectDamage(Player attacker, Player victim) {
@@ -410,6 +687,10 @@ public final class MatchManager {
     }
 
     public boolean canDamage(Player attacker, Player victim) {
+        if (frozen.contains(attacker.getUniqueId()) || frozen.contains(victim.getUniqueId())) {
+            return false;
+        }
+
         Match first = matchesByPlayer.get(attacker.getUniqueId());
         Match second = matchesByPlayer.get(victim.getUniqueId());
         if (first == null || first != second) {
@@ -500,6 +781,8 @@ public final class MatchManager {
         }
 
         match.setEnded(true);
+        releaseFreeze(match);
+        clearMatchTeams(match);
 
         for (UUID spectatorId : new java.util.HashSet<UUID>(match.getSpectators())) {
             Player spectator = Bukkit.getPlayer(spectatorId);
@@ -529,6 +812,51 @@ public final class MatchManager {
 
         Set<UUID> winnerSet = new java.util.HashSet<UUID>(winners);
 
+        if (match.getType() == Match.Type.PRACTICE &&
+                !plugin.getConfig().getBoolean("practice.affects-stats", false)) {
+            updateStats = false;
+        }
+
+        int target = match.getSettings().getBestOf();
+
+        if (updateStats && !winnerSet.isEmpty() && target > 1 &&
+                (match.getType() == Match.Type.DUEL || match.getType() == Match.Type.TEAM)) {
+            String key = seriesKey(match);
+            int[] score = seriesScores.get(key);
+
+            if (score == null) {
+                score = new int[2];
+                seriesScores.put(key, score);
+            }
+
+            boolean redWon = false;
+
+            for (UUID uuid : winnerSet) {
+                if (match.getRed().contains(uuid)) {
+                    redWon = true;
+                    break;
+                }
+            }
+
+            if (redWon) {
+                score[0]++;
+            } else {
+                score[1]++;
+            }
+
+            int needed = target / 2 + 1;
+
+            if (score[0] < needed && score[1] < needed) {
+                updateStats = false;
+                broadcastToMatch(match, plugin.color("&dSeries &c" + score[0] + " &7- &9" + score[1] +
+                        " &7(first to " + needed + ")"));
+                scheduleNextRound(match);
+            } else {
+                seriesScores.remove(key);
+                broadcastToMatch(match, plugin.color("&dFinal series score &c" + score[0] + " &7- &9" + score[1]));
+            }
+        }
+
         if (updateStats) {
             for (UUID uuid : match.getParticipants()) {
                 Player player = Bukkit.getOfflinePlayer(uuid).getPlayer();
@@ -536,15 +864,19 @@ public final class MatchManager {
                     plugin.getDataManager().recordWin(Bukkit.getOfflinePlayer(uuid));
                     if (player != null) {
                         player.sendMessage(plugin.color("&aYou won the match!"));
+                        SoundUtil.victory(player);
                         launchFirework(player);
                     }
                 } else {
                     plugin.getDataManager().recordLoss(Bukkit.getOfflinePlayer(uuid));
                     if (player != null) {
                         player.sendMessage(plugin.color("&cYou lost the match."));
+                        SoundUtil.defeat(player);
                     }
                 }
             }
+
+            announceVictory(match, winnerSet);
         }
 
         final List<UUID> participants = new ArrayList<UUID>(match.getParticipants());
@@ -589,19 +921,14 @@ public final class MatchManager {
     }
 
     public void togglePractice(Player player) {
-        if (practiceQueue.remove(player.getUniqueId())) {
-            player.sendMessage(plugin.message("practice-left"));
+        practiceQueue.remove(player.getUniqueId());
+
+        if (publicFfa.contains(player.getUniqueId())) {
+            leaveFfa(player);
             return;
         }
 
-        if (isBusy(player)) {
-            player.sendMessage(plugin.message("already-in-match"));
-            return;
-        }
-
-        practiceQueue.add(player.getUniqueId());
-        player.sendMessage(plugin.message("practice-joined"));
-        processPracticeQueue();
+        joinFfa(player);
     }
 
     private void processPracticeQueue() {
@@ -651,7 +978,10 @@ public final class MatchManager {
         }
 
         if (publicFfaArena == null) {
-            publicFfaArena = plugin.getArenaManager().acquire(Arena.Mode.FFA);
+            publicFfaArena = plugin.getArenaManager().acquire(
+                    Arena.Mode.FFA,
+                    plugin.getConfig().getString("practice.arena", "")
+            );
         }
 
         if (publicFfaArena == null || publicFfaArena.getFfaSpawns().isEmpty()) {
@@ -662,7 +992,10 @@ public final class MatchManager {
         ffaSnapshots.put(player.getUniqueId(), new InventorySnapshot(player));
         publicFfa.add(player.getUniqueId());
         respawnFfa(player);
-        player.sendMessage(plugin.color("&aYou joined the persistent FFA arena."));
+        SoundUtil.queueJoin(player);
+        player.sendMessage(plugin.color("&aYou joined Practice &7(free for all)&a."));
+        player.sendMessage(plugin.color("&7Wins and losses here do &fnot &7affect your stats."));
+        player.sendMessage(plugin.color("&7You respawn at a random spot. Type &f/pvp leave &7to exit."));
     }
 
     public void leaveFfa(Player player) {
@@ -681,7 +1014,8 @@ public final class MatchManager {
             publicFfaArena = null;
         }
 
-        player.sendMessage(plugin.color("&aYou left the FFA arena."));
+        SoundUtil.queueLeave(player);
+        player.sendMessage(plugin.color("&aYou left Practice. No stats were changed."));
     }
 
     public void respawnFfa(Player player) {
