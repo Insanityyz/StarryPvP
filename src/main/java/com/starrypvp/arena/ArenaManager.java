@@ -182,13 +182,35 @@ public final class ArenaManager {
     }
 
     public Arena acquire(Arena.Mode mode) {
+        List<Arena> candidates = new ArrayList<Arena>();
+
         for (Arena arena : arenas.values()) {
             if (arena.getMode() == mode && arena.isReady() && !arena.isOccupied()) {
-                arena.setOccupied(true);
-                return arena;
+                candidates.add(arena);
             }
         }
-        return null;
+
+        if (candidates.isEmpty()) {
+            return null;
+        }
+
+        Arena chosen = candidates.get((int) (Math.random() * candidates.size()));
+        chosen.setOccupied(true);
+        return chosen;
+    }
+
+    public Arena acquire(Arena.Mode mode, String preferredName) {
+        if (preferredName != null && !preferredName.trim().isEmpty()) {
+            Arena preferred = get(preferredName);
+
+            if (preferred != null && preferred.getMode() == mode &&
+                    preferred.isReady() && !preferred.isOccupied()) {
+                preferred.setOccupied(true);
+                return preferred;
+            }
+        }
+
+        return acquire(mode);
     }
 
     public void release(Arena arena) {
