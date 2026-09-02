@@ -3,10 +3,23 @@ requests:
 
 match:
   countdown-seconds: 3
+  load-grace-seconds: 8
   forfeit-confirmation-seconds: 13
   victory-fireworks: true
   restore-delay-ticks: 40
   maximum-duration-seconds: 300
+  broadcast-results: true
+  sounds: true
+  win-messages:
+    - "&d{winners} &fclutched it against &d{losers}&f!"
+    - "&d{winners} &fleft &d{losers} &fin the dust!"
+    - "&d{winners} &ftook the win over &d{losers}&f!"
+    - "&fIt is over! &d{winners} &fbeat &d{losers}&f!"
+    - "&d{losers} &fnever stood a chance against &d{winners}&f!"
+
+queue:
+  announce-waiting: true
+  default-best-of: 1
 
 arena-protection:
   radius: 150.0
@@ -27,6 +40,9 @@ practice:
   weapons: BOTH
   healing: GAPPLE
   building: true
+  arena: ""
+  random-respawn: true
+  affects-stats: false
 
 ffa:
   armor: IRON
