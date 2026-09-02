@@ -105,14 +105,6 @@ public final class GameListener implements Listener {
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
-    public void onAnyDamage(EntityDamageEvent event) {
-        if (event.getEntity() instanceof Player &&
-                plugin.getMatchManager().isSpectating((Player) event.getEntity())) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST)
     public void onVelocity(PlayerVelocityEvent event) {
         Match match = plugin.getMatchManager().getMatch(event.getPlayer());
 
