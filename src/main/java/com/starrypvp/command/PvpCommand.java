@@ -69,8 +69,14 @@ public final class PvpCommand implements CommandExecutor, TabCompleter {
             plugin.getMatchManager().accept(player, args.length > 1 ? args[1] : null);
         } else if (sub.equals("deny")) {
             plugin.getMatchManager().deny(player, args.length > 1 ? args[1] : null);
+        } else if (sub.equals("menu") || sub.equals("modes") || sub.equals("play")) {
+            plugin.getMenuGui().openModes(player);
+        } else if (sub.equals("cancel")) {
+            plugin.getQueueManager().cancel(player, false);
         } else if (sub.equals("leave") || sub.equals("forfeit")) {
-            if (plugin.getMatchManager().isPublicFfa(player)) {
+            if (plugin.getQueueManager().isQueued(player)) {
+                plugin.getQueueManager().cancel(player, false);
+            } else if (plugin.getMatchManager().isPublicFfa(player)) {
                 plugin.getMatchManager().leaveFfa(player);
             } else {
                 plugin.getMatchManager().requestForfeit(player);
@@ -117,6 +123,8 @@ public final class PvpCommand implements CommandExecutor, TabCompleter {
         player.sendMessage(plugin.color("&d&lStarryPvP Match Creation"));
         player.sendMessage(plugin.color("&f/pvp <player> &7- Configure and send a duel"));
         player.sendMessage(plugin.color("&f/pvp <player> 2v2|3v3|5v5 &7- Party duel"));
+        player.sendMessage(plugin.color("&f/pvp &7- Open the mode menu"));
+        player.sendMessage(plugin.color("&f/pvp cancel &7- Leave a queue or room"));
         player.sendMessage(plugin.color("&f/pvp practice &7- Toggle practice matchmaking"));
         player.sendMessage(plugin.color("&f/pvp ffa join &7- Enter persistent FFA"));
         player.sendMessage(plugin.color("&7Use &f/pvp help &7for the complete guide."));
@@ -132,6 +140,8 @@ public final class PvpCommand implements CommandExecutor, TabCompleter {
         sendHelp(player, "starrypvp.duel", "/pvp deny [player]", "Deny a challenge");
         sendHelp(player, "starrypvp.use", "/pvp leave", "Confirm and forfeit a match");
         sendHelp(player, "starrypvp.practice", "/pvp practice", "Toggle practice queue");
+        sendHelp(player, "starrypvp.use", "/pvp menu", "Open the mode menu");
+        sendHelp(player, "starrypvp.use", "/pvp cancel", "Leave a queue or room");
         sendHelp(player, "starrypvp.use", "/pvp stats [player]", "View PvP statistics");
         sendHelp(player, "starrypvp.use", "/pvp top [ratio]", "View rankings");
         sendHelp(player, "starrypvp.spectate", "/pvp spectate [player]", "View active matches");
