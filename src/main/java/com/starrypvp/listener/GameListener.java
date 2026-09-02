@@ -69,7 +69,6 @@ public final class GameListener implements Listener {
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
-    @EventHandler(priority = EventPriority.HIGHEST)
     public void onDamage(EntityDamageByEntityEvent event) {
         if (!(event.getEntity() instanceof Player)) {
             return;
