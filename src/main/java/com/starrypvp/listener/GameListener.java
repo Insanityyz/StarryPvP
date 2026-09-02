@@ -248,6 +248,31 @@ public final class GameListener implements Listener {
         }
     }
 
+    @EventHandler
+    public void onFrozenMove(org.bukkit.event.player.PlayerMoveEvent event) {
+        if (!plugin.getMatchManager().isFrozen(event.getPlayer())) {
+            return;
+        }
+
+        org.bukkit.Location from = event.getFrom();
+        org.bukkit.Location to = event.getTo();
+
+        if (to == null) {
+            return;
+        }
+
+        if (from.getBlockX() == to.getBlockX() &&
+                from.getBlockY() == to.getBlockY() &&
+                from.getBlockZ() == to.getBlockZ()) {
+            return;
+        }
+
+        org.bukkit.Location hold = from.clone();
+        hold.setYaw(to.getYaw());
+        hold.setPitch(to.getPitch());
+        event.setTo(hold);
+    }
+
     private Player resolveAttacker(Entity entity) {
         if (entity instanceof Player) {
             return (Player) entity;
