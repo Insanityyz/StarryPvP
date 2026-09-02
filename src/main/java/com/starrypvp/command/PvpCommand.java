@@ -51,7 +51,7 @@ public final class PvpCommand implements CommandExecutor, TabCompleter {
         }
 
         if (args.length == 0) {
-            showQuickStart(player);
+            plugin.getMenuGui().openModes(player);
             return true;
         }
 
