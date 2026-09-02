@@ -69,7 +69,8 @@ public final class GameListener implements Listener {
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
-    public void onAnyDamage(EntityDamageEvent event) {
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onDamage(EntityDamageByEntityEvent event) {
         if (!(event.getEntity() instanceof Player)) {
             return;
         }
@@ -103,6 +104,15 @@ public final class GameListener implements Listener {
             plugin.getMatchManager().markDirectDamage(attacker, victim);
         }
     }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onAnyDamage(EntityDamageEvent event) {
+        if (event.getEntity() instanceof Player &&
+                plugin.getMatchManager().isSpectating((Player) event.getEntity())) {
+            event.setCancelled(true);
+        }
+    }
+
 
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onVelocity(PlayerVelocityEvent event) {
