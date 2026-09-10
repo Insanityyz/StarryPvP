@@ -526,7 +526,7 @@ public final class MatchManager {
         }
     }
 
-        private void preparePlayer(Player player, Match match, boolean red) {
+    private void preparePlayer(Player player, Match match, boolean red) {
         player.closeInventory();
         player.setGameMode(GameMode.SURVIVAL);
         player.setHealth(player.getMaxHealth());
@@ -1125,11 +1125,6 @@ public final class MatchManager {
         }
     }
 
-        match.setEnded(true);
-        releaseFreeze(match);
-        clearMatchTeams(match);
-        cancelMatchTimer(match);
-
     public void eliminate(Player player) {
         Match match = matchesByPlayer.get(player.getUniqueId());
         if (match == null || match.isEnded()) {
@@ -1214,6 +1209,7 @@ public final class MatchManager {
         match.setEnded(true);
         releaseFreeze(match);
         clearMatchTeams(match);
+        cancelMatchTimer(match);
 
         for (UUID spectatorId : new java.util.HashSet<UUID>(match.getSpectators())) {
             Player spectator = Bukkit.getPlayer(spectatorId);
