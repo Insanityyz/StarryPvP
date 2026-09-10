@@ -51,6 +51,66 @@ ffa:
   building: true
   respawn-delay-ticks: 20
 
+# Where players are sent if their pre-match location turns out to be inside
+# an arena. Leave world blank to use the world spawn instead.
+exit:
+  world: ""
+  x: 0.5
+  y: 64.0
+  z: 0.5
+  yaw: 0.0
+  pitch: 0.0
+
+security:
+  # Kit items carry an invisible marker so they can never enter the economy.
+  tag-kit-items: true
+  purge-kit-items-on-join: true
+  block-item-drops: true
+  block-item-pickup: true
+  block-container-access: true
+  # Stops any item entity existing inside an arena while a match runs there.
+  block-item-spawn-in-arena: true
+  # Deletes every loose item in the arena at match end, not just kit items
+  # (covers wool mined with shears and similar).
+  sweep-all-ground-items: true
+  contain-players: true
+  # Defaults to arena-protection.radius when left at -1.
+  containment-radius: -1
+  force-exit-teleport: true
+  allowed-commands:
+    - "/pvp leave"
+    - "/pvp forfeit"
+    - "/pvp stats"
+    - "/pvp help"
+    - "/starrypvp leave"
+    - "/starrypvp forfeit"
+
+event-ffa:
+  enabled: true
+  interval-minutes: 20
+  signup-seconds: 60
+  # Hard capped at 10 by the plugin.
+  max-players: 10
+  minimum-players: 3
+  # Leave blank to use any free FFA arena. A dedicated arena is recommended
+  # so the event never fights the practice FFA for a map.
+  arena: ""
+  affects-stats: false
+  kit:
+    # LEATHER shows each player's event colour on their armour.
+    armor: LEATHER
+    weapons: BOTH
+    healing: GAPPLE
+    building: false
+    bow: false
+  reward:
+    amount: 250
+    # Run from console. {player} and {amount} are replaced.
+    commands:
+      - "eco give {player} {amount}"
+    minimum-players: 3
+
+
 custom-ffa:
   minimum-players: 2
   acceptance-window-seconds: 10

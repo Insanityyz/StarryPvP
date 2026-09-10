@@ -34,6 +34,10 @@ permissions:
     description: Allows use of FFA commands.
     default: true
 
+  starrypvp.event:
+    description: Allows joining the scheduled FFA event.
+    default: true
+
   starrypvp.spectate:
     description: Allows spectating active matches.
     default: true
@@ -61,4 +65,7 @@ permissions:
     default: op
 
   starrypvp.admin.arena:
+    default: op
+
+  starrypvp.admin.event:
     default: op

@@ -1,6 +1,7 @@
 package com.starrypvp.match;
 
 import com.starrypvp.arena.Arena;
+import com.starrypvp.util.EventColor;
 import com.starrypvp.util.InventorySnapshot;
 import org.bukkit.entity.Player;
 
@@ -29,6 +30,9 @@ public final class Match {
     private final Set<UUID> alive = new LinkedHashSet<UUID>();
     private final Set<UUID> spectators = new LinkedHashSet<UUID>();
     private final Map<UUID, InventorySnapshot> snapshots = new LinkedHashMap<UUID, InventorySnapshot>();
+    private final Map<UUID, Integer> kills = new LinkedHashMap<UUID, Integer>();
+    private final Map<UUID, EventColor> colors = new LinkedHashMap<UUID, EventColor>();
+    private final long startedAt = System.currentTimeMillis();
     private boolean directDamage;
     private boolean ended;
 
@@ -105,6 +109,34 @@ public final class Match {
 
     public InventorySnapshot getSnapshot(UUID uuid) {
         return snapshots.get(uuid);
+    }
+
+    public long getStartedAt() {
+        return startedAt;
+    }
+
+    public void addKill(UUID uuid) {
+        if (uuid == null) {
+            return;
+        }
+
+        Integer current = kills.get(uuid);
+        kills.put(uuid, Integer.valueOf(current == null ? 1 : current.intValue() + 1));
+    }
+
+    public int getKills(UUID uuid) {
+        Integer current = kills.get(uuid);
+        return current == null ? 0 : current.intValue();
+    }
+
+    public EventColor getColor(UUID uuid) {
+        return colors.get(uuid);
+    }
+
+    public void setColor(UUID uuid, EventColor color) {
+        if (uuid != null && color != null) {
+            colors.put(uuid, color);
+        }
     }
 
     public boolean hasDirectDamage() {

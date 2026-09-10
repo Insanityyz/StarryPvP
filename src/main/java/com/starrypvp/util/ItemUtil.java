@@ -33,18 +33,27 @@ public final class ItemUtil {
 
     public static void giveExtras(Player player, MatchSettings settings) {
         if (settings.isBow()) {
-            player.getInventory().addItem(new ItemStack(Material.BOW));
-            player.getInventory().addItem(new ItemStack(Material.ARROW, 16));
+            player.getInventory().addItem(KitTag.tag(new ItemStack(Material.BOW)));
+            player.getInventory().addItem(KitTag.tag(new ItemStack(Material.ARROW, 16)));
         }
 
         if (settings.isShears()) {
-            player.getInventory().addItem(new ItemStack(Material.SHEARS));
+            player.getInventory().addItem(KitTag.tag(new ItemStack(Material.SHEARS)));
         }
 
         player.updateInventory();
     }
 
     public static void giveKit(Player player, MatchSettings settings, boolean redTeam) {
+        giveKit(player, settings, redTeam, null, (short) -1);
+    }
+
+    /**
+     * @param override    optional leather dye colour (FFA events)
+     * @param woolData    optional wool colour, or -1 for the default team wool
+     */
+    public static void giveKit(Player player, MatchSettings settings, boolean redTeam,
+                               Color override, short woolData) {
         player.getInventory().clear();
         player.getInventory().setArmorContents(new ItemStack[4]);
 
@@ -53,29 +62,31 @@ public final class ItemUtil {
         if (settings.getWeaponMode().hasSword()) {
             ItemStack sword = new ItemStack(Material.valueOf(material + "_SWORD"));
             enchant(sword, settings.getSwordSharpness(), settings.getSwordUnbreaking());
-            player.getInventory().addItem(sword);
+            player.getInventory().addItem(KitTag.tag(sword));
         }
 
         if (settings.getWeaponMode().hasAxe()) {
             ItemStack axe = new ItemStack(Material.valueOf(material + "_AXE"));
             enchant(axe, settings.getAxeSharpness(), settings.getAxeUnbreaking());
-            player.getInventory().addItem(axe);
+            player.getInventory().addItem(KitTag.tag(axe));
         }
 
-        player.getInventory().setArmorContents(armor(settings.getArmorTier(), redTeam));
+        player.getInventory().setArmorContents(
+                KitTag.tagAll(armor(settings.getArmorTier(), redTeam, override)));
 
         if (settings.getHealingMode() == MatchSettings.HealingMode.GAPPLE) {
-            player.getInventory().addItem(new ItemStack(Material.GOLDEN_APPLE, 1));
+            player.getInventory().addItem(KitTag.tag(new ItemStack(Material.GOLDEN_APPLE, 1)));
         } else if (settings.getHealingMode() == MatchSettings.HealingMode.POTIONS) {
-            player.getInventory().addItem(createHealingPotion(3));
+            player.getInventory().addItem(KitTag.tag(createHealingPotion(3)));
         }
 
         if (settings.isBuilding()) {
-            short color = redTeam ? (short) 14 : (short) 11;
-            player.getInventory().addItem(new ItemStack(Material.WOOL, 64, color));
-            player.getInventory().addItem(new ItemStack(Material.WOOL, 64, color));
+            short color = woolData >= 0 ? woolData : (redTeam ? (short) 14 : (short) 11);
+            player.getInventory().addItem(KitTag.tag(new ItemStack(Material.WOOL, 64, color)));
+            player.getInventory().addItem(KitTag.tag(new ItemStack(Material.WOOL, 64, color)));
         }
 
+        giveExtras(player, settings);
         player.updateInventory();
     }
 
@@ -111,11 +122,11 @@ public final class ItemUtil {
         }
     }
 
-    private static ItemStack[] armor(MatchSettings.ArmorTier tier, boolean redTeam) {
+    private static ItemStack[] armor(MatchSettings.ArmorTier tier, boolean redTeam, Color override) {
         if (tier == MatchSettings.ArmorTier.LEATHER) {
-            Color color = redTeam
-                    ? Color.fromRGB(255, 0, 0)
-                    : Color.fromRGB(0, 0, 255);
+            Color color = override != null
+                    ? override
+                    : (redTeam ? Color.fromRGB(255, 0, 0) : Color.fromRGB(0, 0, 255));
 
             return new ItemStack[]{
                     dyed(Material.LEATHER_BOOTS, color),

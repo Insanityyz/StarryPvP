@@ -101,6 +101,8 @@ public final class PvpCommand implements CommandExecutor, TabCompleter {
             chooseTeam(player, args);
         } else if (sub.equals("ffa")) {
             ffa(player, args);
+        } else if (sub.equals("event")) {
+            event(player, args);
         } else if (sub.equals("toggle")) {
             adminToggle(player);
         } else if (sub.equals("end")) {
@@ -148,6 +150,7 @@ public final class PvpCommand implements CommandExecutor, TabCompleter {
         sendHelp(player, "starrypvp.use", "/pvp unstuck", "Clear broken spectator state");
         sendHelp(player, "starrypvp.party", "/pvp party", "Manage your party");
         sendHelp(player, "starrypvp.ffa", "/pvp ffa join|leave", "Manage FFA participation");
+        sendHelp(player, "starrypvp.event", "/pvp event join", "Join the next FFA event");
 
         if (player.hasPermission("starrypvp.admin")) {
             player.sendMessage(plugin.color("&cAdmin: &f/pvp toggle, end, reset, reload, arena"));
@@ -436,6 +439,58 @@ public final class PvpCommand implements CommandExecutor, TabCompleter {
         } else if (args[1].equalsIgnoreCase("custom")) {
             player.sendMessage(plugin.color("&ePrivate FFA setup uses the standard GUI and requires configured FFA spawns."));
             plugin.getSetupGui().open(player, null, SetupGui.ChallengeType.CUSTOM_FFA);
+        }
+    }
+
+    private void event(Player player, String[] args) {
+        if (args.length < 2 || args[1].equalsIgnoreCase("join") || args[1].equalsIgnoreCase("accept")) {
+            if (!player.hasPermission("starrypvp.event")) {
+                player.sendMessage(plugin.message("no-permission"));
+                return;
+            }
+
+            plugin.getEventFfaManager().join(player);
+            return;
+        }
+
+        String action = args[1].toLowerCase();
+
+        if (action.equals("start")) {
+            if (!player.hasPermission("starrypvp.admin.event")) {
+                player.sendMessage(plugin.message("no-permission"));
+                return;
+            }
+
+            plugin.getEventFfaManager().announce(true);
+            player.sendMessage(plugin.color("&aFFA event sign ups opened."));
+        } else if (action.equals("cancel")) {
+            if (!player.hasPermission("starrypvp.admin.event")) {
+                player.sendMessage(plugin.message("no-permission"));
+                return;
+            }
+
+            plugin.getEventFfaManager().cancel("Cancelled by an administrator.");
+            player.sendMessage(plugin.color("&aFFA event cancelled."));
+        } else if (action.equals("info") || action.equals("status")) {
+            player.sendMessage(plugin.color("&d&lFFA Event"));
+            player.sendMessage(plugin.color("&fSign ups open: &d"
+                    + (plugin.getEventFfaManager().isOpen() ? "Yes" : "No")));
+            player.sendMessage(plugin.color("&fEvent running: &d"
+                    + (plugin.getEventFfaManager().isRunning() ? "Yes" : "No")));
+            player.sendMessage(plugin.color("&fSigned up: &d"
+                    + plugin.getEventFfaManager().signedUp().size()
+                    + "&7/&d" + plugin.getEventFfaManager().maxPlayers()));
+            player.sendMessage(plugin.color("&fEvery &d"
+                    + plugin.getConfig().getLong("event-ffa.interval-minutes", 20L)
+                    + " &fminutes. Prize: &a$"
+                    + plugin.getConfig().getInt("event-ffa.reward.amount", 250)));
+        } else {
+            player.sendMessage(plugin.color("&f/pvp event join &7- Enter the next FFA event"));
+            player.sendMessage(plugin.color("&f/pvp event info &7- Show event status"));
+
+            if (player.hasPermission("starrypvp.admin.event")) {
+                player.sendMessage(plugin.color("&cAdmin: &f/pvp event start, /pvp event cancel"));
+            }
         }
     }
 
@@ -780,7 +835,7 @@ public final class PvpCommand implements CommandExecutor, TabCompleter {
                     "help", "duel", "duels", "accept", "deny", "leave", "forfeit",
                     "practice", "random", "stats", "leaderboard", "top", "menu",
                     "modes", "play", "cancel",
-                    "spectate", "view", "unstuck", "party", "team", "ffa"
+                    "spectate", "view", "unstuck", "party", "team", "ffa", "event"
             ));
 
             if (sender.hasPermission("starrypvp.admin")) {
@@ -826,6 +881,16 @@ public final class PvpCommand implements CommandExecutor, TabCompleter {
 
         if (args.length == 2 && args[0].equalsIgnoreCase("ffa")) {
             return filter(Arrays.asList("join", "leave", "custom"), args[1]);
+        }
+
+        if (args.length == 2 && args[0].equalsIgnoreCase("event")) {
+            List<String> values = new ArrayList<String>(Arrays.asList("join", "info"));
+
+            if (sender.hasPermission("starrypvp.admin.event")) {
+                values.addAll(Arrays.asList("start", "cancel"));
+            }
+
+            return filter(values, args[1]);
         }
 
         if (args.length == 2 && args[0].equalsIgnoreCase("team")) {

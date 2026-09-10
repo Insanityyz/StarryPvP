@@ -4,8 +4,10 @@ import com.starrypvp.StarryPvP;
 import com.starrypvp.arena.Arena;
 import com.starrypvp.gui.SetupGui;
 import com.starrypvp.party.PartyManager;
+import com.starrypvp.util.EventColor;
 import com.starrypvp.util.InventorySnapshot;
 import com.starrypvp.util.ItemUtil;
+import com.starrypvp.util.KitTag;
 import com.starrypvp.util.SoundUtil;
 import net.md_5.bungee.api.chat.ClickEvent;
 import net.md_5.bungee.api.chat.TextComponent;
@@ -70,6 +72,8 @@ public final class MatchManager {
     private final Set<UUID> frozen = Collections.newSetFromMap(new ConcurrentHashMap<UUID, Boolean>());
     private final Map<UUID, String[]> matchTeams = new ConcurrentHashMap<UUID, String[]>();
     private final Map<String, int[]> seriesScores = new ConcurrentHashMap<String, int[]>();
+    private final Map<UUID, org.bukkit.scheduler.BukkitTask> matchTimers =
+            new ConcurrentHashMap<UUID, org.bukkit.scheduler.BukkitTask>();
     private boolean duelRequestsEnabled = true;
     private Arena publicFfaArena;
 
@@ -248,6 +252,16 @@ public final class MatchManager {
             return false;
         }
 
+        if (arenaMode == Arena.Mode.FFA && arena.getFfaSpawns().isEmpty()) {
+            plugin.getArenaManager().release(arena);
+
+            for (Player player : redPlayers) {
+                player.sendMessage(plugin.color("&cThat arena has no FFA spawn points."));
+            }
+
+            return false;
+        }
+
         if ((arenaMode == Arena.Mode.DUEL || arenaMode == Arena.Mode.TEAM) &&
                 (arena.getRedSpawns().size() < redPlayers.size() ||
                         arena.getBlueSpawns().size() < bluePlayers.size())) {
@@ -294,7 +308,9 @@ public final class MatchManager {
 
             plugin.getArenaProtectionManager().begin(match);
             seatParticipantPets(match);
+            sweepArena(arena);
             prepareMatch(match);
+            startMatchTimer(match);
             return true;
         } catch (Throwable throwable) {
             plugin.getLogger().severe("Could not start match " + match.getId() + ": " + throwable.getMessage());
@@ -326,7 +342,17 @@ public final class MatchManager {
         }
     }
 
+    public boolean startEventFfa(Collection<Player> players, MatchSettings settings) {
+        return startMatch(Match.Type.CUSTOM_FFA, Arena.Mode.FFA, settings,
+                players, Collections.<Player>emptyList());
+    }
+
     private void prepareMatch(final Match match) {
+        if (match.getType() == Match.Type.CUSTOM_FFA) {
+            prepareFfaMatch(match);
+            return;
+        }
+
         List<Location> redSpawns = match.getArena().getRedSpawns();
         List<Location> blueSpawns = match.getArena().getBlueSpawns();
         int redIndex = 0;
@@ -348,6 +374,35 @@ public final class MatchManager {
             }
             preparePlayer(player, match, false);
             player.teleport(blueSpawns.get(blueIndex++ % blueSpawns.size()));
+        }
+
+        applyMatchTeams(match);
+        beginCountdown(match);
+    }
+
+    private void prepareFfaMatch(final Match match) {
+        List<Location> spawns = new ArrayList<Location>(match.getArena().getFfaSpawns());
+        List<UUID> order = new ArrayList<UUID>(match.getParticipants());
+        Collections.shuffle(order);
+        Collections.shuffle(spawns);
+
+        EventColor[] palette = EventColor.spread(order.size());
+        int index = 0;
+
+        for (UUID uuid : order) {
+            Player player = Bukkit.getPlayer(uuid);
+
+            if (player == null) {
+                continue;
+            }
+
+            EventColor colour = palette[index % palette.length];
+            match.setColor(uuid, colour);
+            preparePlayer(player, match, true);
+            player.teleport(spawns.get(index % spawns.size()));
+            player.sendMessage(plugin.color("&fYou are ") + colour.coloured()
+                    + plugin.color(" &ffor this event."));
+            index++;
         }
 
         applyMatchTeams(match);
@@ -498,7 +553,15 @@ public final class MatchManager {
             CombatUtil.enableLegacyAttackSpeed(player);
         }
 
-        ItemUtil.giveKit(player, match.getSettings(), red);
+        EventColor colour = match.getColor(player.getUniqueId());
+
+        ItemUtil.giveKit(
+                player,
+                match.getSettings(),
+                red,
+                colour == null ? null : colour.getDye(),
+                colour == null ? (short) -1 : colour.getWool()
+        );
     }
 
     
@@ -511,6 +574,36 @@ public final class MatchManager {
         Team red = board.getTeam(redName);
         if (red == null) {
             red = board.registerNewTeam(redName);
+        }
+
+        if (match.getType() == Match.Type.CUSTOM_FFA) {
+            List<String> created = new ArrayList<String>();
+            int index = 0;
+
+            for (UUID uuid : match.getParticipants()) {
+                Player member = Bukkit.getPlayer(uuid);
+                EventColor colour = match.getColor(uuid);
+
+                if (member == null || colour == null) {
+                    continue;
+                }
+
+                String teamName = "spF" + suffix + (index++);
+                Team team = board.getTeam(teamName);
+
+                if (team == null) {
+                    team = board.registerNewTeam(teamName);
+                }
+
+                team.setPrefix(colour.getChat().toString());
+                team.setAllowFriendlyFire(true);
+                team.setCanSeeFriendlyInvisibles(false);
+                team.addEntry(member.getName());
+                created.add(teamName);
+            }
+
+            matchTeams.put(match.getId(), created.toArray(new String[created.size()]));
+            return;
         }
 
         Team blue = board.getTeam(blueName);
@@ -611,7 +704,10 @@ public final class MatchManager {
                 builder.append(ChatColor.WHITE).append(", ");
             }
 
-            builder.append(match.getRed().contains(uuid) ? ChatColor.RED : ChatColor.BLUE).append(name);
+            EventColor colour = match.getColor(uuid);
+            builder.append(colour != null
+                    ? colour.getChat()
+                    : (match.getRed().contains(uuid) ? ChatColor.RED : ChatColor.BLUE)).append(name);
         }
 
         return builder.length() == 0 ? "Nobody" : builder.toString();
@@ -679,6 +775,349 @@ public final class MatchManager {
         }, delay);
     }
 
+    public void recordKill(Player killer, Player victim) {
+        if (killer == null || victim == null) {
+            return;
+        }
+
+        Match match = matchesByPlayer.get(victim.getUniqueId());
+
+        if (match != null && match == matchesByPlayer.get(killer.getUniqueId())) {
+            match.addKill(killer.getUniqueId());
+        }
+    }
+
+    private void startMatchTimer(final Match match) {
+        int configured = plugin.getConfig().getInt("match.maximum-duration-seconds", 300);
+
+        if (configured <= 0) {
+            return;
+        }
+
+        final int limit = configured;
+
+        org.bukkit.scheduler.BukkitTask task = new org.bukkit.scheduler.BukkitRunnable() {
+            private int elapsed;
+
+            public void run() {
+                if (match.isEnded()) {
+                    cancel();
+                    return;
+                }
+
+                elapsed++;
+                int remaining = limit - elapsed;
+
+                if (remaining == 60 || remaining == 30 || remaining == 10
+                        || (remaining <= 5 && remaining > 0)) {
+                    broadcastToMatch(match, plugin.color("&e" + remaining + " second"
+                            + (remaining == 1 ? "" : "s") + " remaining."));
+                }
+
+                if (remaining <= 0) {
+                    cancel();
+                    endByTimeLimit(match);
+                }
+            }
+        }.runTaskTimer(plugin, 20L, 20L);
+
+        matchTimers.put(match.getId(), task);
+    }
+
+    private void cancelMatchTimer(Match match) {
+        org.bukkit.scheduler.BukkitTask task = matchTimers.remove(match.getId());
+
+        if (task != null) {
+            task.cancel();
+        }
+    }
+
+    private void endByTimeLimit(Match match) {
+        if (match.isEnded()) {
+            return;
+        }
+
+        broadcastToMatch(match, plugin.color("&eTime is up!"));
+
+        Set<UUID> best = new java.util.LinkedHashSet<UUID>();
+        int bestKills = -1;
+        double bestHealth = -1.0D;
+
+        for (UUID uuid : match.getAlive()) {
+            Player player = Bukkit.getPlayer(uuid);
+
+            if (player == null) {
+                continue;
+            }
+
+            int kills = match.getKills(uuid);
+            double health = player.getHealth();
+
+            if (kills > bestKills || (kills == bestKills && health > bestHealth)) {
+                bestKills = kills;
+                bestHealth = health;
+                best.clear();
+                best.add(uuid);
+            } else if (kills == bestKills && health == bestHealth) {
+                best.add(uuid);
+            }
+        }
+
+        if (best.size() != 1) {
+            broadcastToMatch(match, plugin.color("&7It was a draw."));
+            endMatch(match, Collections.<UUID>emptySet(), false);
+            return;
+        }
+
+        if (match.getType() != Match.Type.CUSTOM_FFA) {
+            UUID leader = best.iterator().next();
+            Set<UUID> side = match.getRed().contains(leader) ? match.getRed() : match.getBlue();
+            endMatch(match, side, true);
+            return;
+        }
+
+        endMatch(match, best, true);
+    }
+
+    private boolean isInsideArena(Location location, Arena arena) {
+        if (location == null || arena == null) {
+            return false;
+        }
+
+        Location centre = arena.getCenter();
+
+        if (centre == null || centre.getWorld() == null || location.getWorld() == null) {
+            return false;
+        }
+
+        if (!centre.getWorld().equals(location.getWorld())) {
+            return false;
+        }
+
+        double radius = plugin.getConfig().getDouble("security.containment-radius",
+                plugin.getConfig().getDouble("arena-protection.radius", 150.0D));
+
+        return centre.distanceSquared(location) <= radius * radius;
+    }
+
+    public Arena getArenaOf(Player player) {
+        Match match = matchesByPlayer.get(player.getUniqueId());
+
+        if (match != null) {
+            return match.getArena();
+        }
+
+        if (publicFfa.contains(player.getUniqueId())) {
+            return publicFfaArena;
+        }
+
+        return null;
+    }
+
+    /**
+     * Where a player who wandered out of bounds gets pulled back to.
+     */
+    public Location recallLocation(Player player, Arena arena) {
+        if (arena == null) {
+            return null;
+        }
+
+        Match match = matchesByPlayer.get(player.getUniqueId());
+
+        if (match != null && match.getType() == Match.Type.CUSTOM_FFA
+                && !arena.getFfaSpawns().isEmpty()) {
+            List<Location> spawns = arena.getFfaSpawns();
+            return spawns.get((int) (Math.random() * spawns.size()));
+        }
+
+        if (match != null && !arena.getRedSpawns().isEmpty() && !arena.getBlueSpawns().isEmpty()) {
+            List<Location> spawns = match.isRed(player.getUniqueId())
+                    ? arena.getRedSpawns()
+                    : arena.getBlueSpawns();
+            return spawns.get(0);
+        }
+
+        if (!arena.getFfaSpawns().isEmpty()) {
+            List<Location> spawns = arena.getFfaSpawns();
+            return spawns.get((int) (Math.random() * spawns.size()));
+        }
+
+        return arena.getCenter();
+    }
+
+    public Location safeExitLocation(Player player) {
+        String worldName = plugin.getConfig().getString("exit.world", "");
+
+        if (worldName != null && !worldName.trim().isEmpty()) {
+            org.bukkit.World world = Bukkit.getWorld(worldName);
+
+            if (world != null) {
+                return new Location(
+                        world,
+                        plugin.getConfig().getDouble("exit.x", 0.5D),
+                        plugin.getConfig().getDouble("exit.y", 64.0D),
+                        plugin.getConfig().getDouble("exit.z", 0.5D),
+                        (float) plugin.getConfig().getDouble("exit.yaw", 0.0D),
+                        (float) plugin.getConfig().getDouble("exit.pitch", 0.0D)
+                );
+            }
+        }
+
+        return player.getWorld().getSpawnLocation();
+    }
+
+    /**
+     * Guarantees a fighter is never left standing in the arena, even when
+     * their pre-match location happened to be inside one.
+     */
+    private void ensureOutsideArena(Player player, Arena arena) {
+        if (!plugin.getConfig().getBoolean("security.force-exit-teleport", true)) {
+            return;
+        }
+
+        if (!isInsideArena(player.getLocation(), arena)
+                && !plugin.getArenaProtectionManager().isInsideActiveArena(player.getLocation())) {
+            return;
+        }
+
+        Location exit = safeExitLocation(player);
+
+        if (exit != null && exit.getWorld() != null) {
+            try {
+                exit.getWorld().loadChunk(exit.getBlockX() >> 4, exit.getBlockZ() >> 4);
+                player.teleport(exit);
+                player.sendMessage(plugin.color("&7You were moved out of the arena."));
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    /**
+     * Deletes loose items, arrows and fireworks left in an arena. Without
+     * this, anything dropped mid match simply stayed on the floor.
+     */
+    private void sweepArena(Arena arena) {
+        if (arena == null) {
+            return;
+        }
+
+        Location centre = arena.getCenter();
+
+        if (centre == null || centre.getWorld() == null) {
+            return;
+        }
+
+        double radius = plugin.getConfig().getDouble("arena-protection.radius", 150.0D);
+        double squared = radius * radius;
+        boolean removeAll = plugin.getConfig().getBoolean("security.sweep-all-ground-items", true);
+
+        for (Entity entity : new ArrayList<Entity>(centre.getWorld().getEntities())) {
+            if (entity.getLocation().distanceSquared(centre) > squared) {
+                continue;
+            }
+
+            if (entity instanceof org.bukkit.entity.Item) {
+                org.bukkit.entity.Item item = (org.bukkit.entity.Item) entity;
+
+                if (removeAll || KitTag.isTagged(item.getItemStack())) {
+                    item.remove();
+                }
+            } else if (entity instanceof org.bukkit.entity.Arrow
+                    || entity instanceof Firework
+                    || entity instanceof org.bukkit.entity.ThrownPotion) {
+                entity.remove();
+            }
+        }
+    }
+
+    /**
+     * Replaces the old "call requestForfeit twice" hack in the quit handler.
+     * The disconnecting player is cleanly removed, restored on the spot, and
+     * handed a pending teleport so the login puts them back where they were.
+     */
+    public void handleQuit(Player player) {
+        UUID uuid = player.getUniqueId();
+        forfeitConfirmations.remove(uuid);
+        frozen.remove(uuid);
+        requests.remove(uuid);
+
+        Match match = matchesByPlayer.remove(uuid);
+
+        if (match != null) {
+            match.eliminate(uuid);
+            broadcastToMatch(match, plugin.color("&e" + player.getName() + " &7disconnected and forfeited."));
+
+            InventorySnapshot snapshot = match.getSnapshot(uuid);
+
+            if (snapshot != null) {
+                try {
+                    snapshot.restore(player);
+                    CombatUtil.restoreAttackSpeed(player);
+                    KitTag.purge(player);
+                    plugin.getRecoveryManager().remove(uuid);
+                    plugin.getRecoveryManager().savePendingExit(uuid, exitTarget(player, match.getArena()));
+                } catch (Throwable throwable) {
+                    plugin.getLogger().severe("Could not restore " + player.getName()
+                            + " on quit, leaving a recovery entry: " + throwable.getMessage());
+                }
+            }
+
+            if (!match.isEnded()) {
+                evaluateWinner(match);
+            }
+
+            if (!match.isEnded() && countOnline(match) <= 0) {
+                endMatch(match, Collections.<UUID>emptySet(), false);
+            }
+        }
+
+        if (publicFfa.contains(uuid)) {
+            InventorySnapshot snapshot = ffaSnapshots.get(uuid);
+            leaveFfa(player);
+
+            if (snapshot != null) {
+                plugin.getRecoveryManager().savePendingExit(uuid,
+                        exitTarget(player, publicFfaArena));
+            }
+        }
+
+        if (isSpectating(player)) {
+            stopSpectating(player);
+        }
+
+        plugin.getPartyManager().leave(player);
+        plugin.getQueueManager().handleQuit(player);
+
+        if (plugin.getEventFfaManager() != null) {
+            plugin.getEventFfaManager().handleQuit(player);
+        }
+    }
+
+    private Location exitTarget(Player player, Arena arena) {
+        Location current = player.getLocation();
+
+        if (isInsideArena(current, arena)
+                || plugin.getArenaProtectionManager().isInsideActiveArena(current)) {
+            return safeExitLocation(player);
+        }
+
+        return current;
+    }
+
+    private int countOnline(Match match) {
+        int online = 0;
+
+        for (UUID uuid : match.getParticipants()) {
+            Player player = Bukkit.getPlayer(uuid);
+
+            if (player != null && player.isOnline() && matchesByPlayer.containsKey(uuid)) {
+                online++;
+            }
+        }
+
+        return online;
+    }
+
     public void markDirectDamage(Player attacker, Player victim) {
         Match match = matchesByPlayer.get(victim.getUniqueId());
         if (match != null && match == matchesByPlayer.get(attacker.getUniqueId())) {
@@ -686,18 +1125,10 @@ public final class MatchManager {
         }
     }
 
-    public boolean canDamage(Player attacker, Player victim) {
-        if (frozen.contains(attacker.getUniqueId()) || frozen.contains(victim.getUniqueId())) {
-            return false;
-        }
-
-        Match first = matchesByPlayer.get(attacker.getUniqueId());
-        Match second = matchesByPlayer.get(victim.getUniqueId());
-        if (first == null || first != second) {
-            return false;
-        }
-        return !first.sameTeam(attacker.getUniqueId(), victim.getUniqueId());
-    }
+        match.setEnded(true);
+        releaseFreeze(match);
+        clearMatchTeams(match);
+        cancelMatchTimer(match);
 
     public void eliminate(Player player) {
         Match match = matchesByPlayer.get(player.getUniqueId());
@@ -817,6 +1248,11 @@ public final class MatchManager {
             updateStats = false;
         }
 
+        if (match.getType() == Match.Type.CUSTOM_FFA &&
+                !plugin.getConfig().getBoolean("event-ffa.affects-stats", false)) {
+            updateStats = false;
+        }
+
         int target = match.getSettings().getBestOf();
 
         if (updateStats && !winnerSet.isEmpty() && target > 1 &&
@@ -879,6 +1315,10 @@ public final class MatchManager {
             announceVictory(match, winnerSet);
         }
 
+        if (match.getType() == Match.Type.CUSTOM_FFA && plugin.getEventFfaManager() != null) {
+            plugin.getEventFfaManager().handleFinish(match, winnerSet);
+        }
+
         final List<UUID> participants = new ArrayList<UUID>(match.getParticipants());
         long delay = plugin.getConfig().getLong("match.restore-delay-ticks", 40L);
 
@@ -888,16 +1328,32 @@ public final class MatchManager {
                     Player player = Bukkit.getPlayer(uuid);
                     InventorySnapshot snapshot = match.getSnapshot(uuid);
                     matchesByPlayer.remove(uuid);
-                    if (player != null && snapshot != null) {
-                        if (player.isDead()) {
-                            player.spigot().respawn();
-                        }
-                        snapshot.restore(player);
-                        CombatUtil.restoreAttackSpeed(player);
-                        plugin.getRecoveryManager().remove(uuid);
-                        player.setScoreboard(Bukkit.getScoreboardManager().getMainScoreboard());
+                    frozen.remove(uuid);
+                    forfeitConfirmations.remove(uuid);
+
+                    if (player == null || snapshot == null) {
+                        continue;
                     }
+
+                    if (player.isDead()) {
+                        player.spigot().respawn();
+                    }
+
+                    try {
+                        snapshot.restore(player);
+                    } catch (Throwable throwable) {
+                        plugin.getLogger().severe("Could not restore " + player.getName()
+                                + " after a match: " + throwable.getMessage());
+                    }
+
+                    KitTag.purge(player);
+                    CombatUtil.restoreAttackSpeed(player);
+                    ensureOutsideArena(player, match.getArena());
+                    plugin.getRecoveryManager().remove(uuid);
+                    player.setScoreboard(Bukkit.getScoreboardManager().getMainScoreboard());
                 }
+
+                sweepArena(match.getArena());
                 plugin.getArenaManager().release(match.getArena());
             }
         }, delay);
@@ -1005,11 +1461,22 @@ public final class MatchManager {
         }
 
         InventorySnapshot snapshot = ffaSnapshots.remove(player.getUniqueId());
+        Arena arena = publicFfaArena;
+
         if (snapshot != null) {
-            snapshot.restore(player);
+            try {
+                snapshot.restore(player);
+            } catch (Throwable throwable) {
+                plugin.getLogger().severe("Could not restore " + player.getName()
+                        + " when leaving FFA: " + throwable.getMessage());
+            }
         }
 
+        KitTag.purge(player);
+        ensureOutsideArena(player, arena);
+
         if (publicFfa.isEmpty() && publicFfaArena != null) {
+            sweepArena(publicFfaArena);
             plugin.getArenaManager().release(publicFfaArena);
             publicFfaArena = null;
         }
@@ -1028,7 +1495,10 @@ public final class MatchManager {
         player.setGameMode(GameMode.SURVIVAL);
         player.setHealth(player.getMaxHealth());
         player.setFoodLevel(20);
+        player.setSaturation(20.0F);
+        player.setFireTicks(0);
         player.teleport(spawn);
+        KitTag.purge(player);
         ItemUtil.giveKit(player, settingsFromConfig("ffa"), Math.random() >= 0.5D);
     }
 
@@ -1246,7 +1716,19 @@ public final class MatchManager {
     }
 
     public boolean isBusy(Player player) {
-        return matchesByPlayer.containsKey(player.getUniqueId()) || publicFfa.contains(player.getUniqueId());
+        return matchesByPlayer.containsKey(player.getUniqueId())
+                || publicFfa.contains(player.getUniqueId())
+                || isSpectating(player);
+    }
+
+    /**
+     * True whenever the player is holding plugin-issued gear or is inside an
+     * arena in any capacity. Used by every anti-dupe check.
+     */
+    public boolean isProtected(Player player) {
+        return matchesByPlayer.containsKey(player.getUniqueId())
+                || publicFfa.contains(player.getUniqueId())
+                || isSpectating(player);
     }
 
     public boolean isDuelRequestsEnabled() {

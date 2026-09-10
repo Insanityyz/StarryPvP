@@ -140,6 +140,7 @@ public final class GameListener implements Listener {
             event.getDrops().clear();
             event.setDroppedExp(0);
             event.setKeepLevel(true);
+            plugin.getMatchManager().recordKill(player.getKiller(), player);
             plugin.getMatchManager().eliminate(player);
             return;
         }
@@ -175,45 +176,55 @@ public final class GameListener implements Listener {
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.MONITOR)
     public void onQuit(PlayerQuitEvent event) {
-        Player player = event.getPlayer();
-
-        if (plugin.getMatchManager().getMatch(player) != null) {
-            plugin.getMatchManager().requestForfeit(player);
-            plugin.getMatchManager().requestForfeit(player);
-        }
-
-        if (plugin.getMatchManager().isPublicFfa(player)) {
-            plugin.getMatchManager().leaveFfa(player);
-        }
-
-        if (plugin.getMatchManager().isSpectating(player)) {
-            plugin.getMatchManager().stopSpectating(player);
-        }
-
-        plugin.getPartyManager().leave(player);
+        // The old code fired requestForfeit twice to skip the confirmation
+        // prompt, which ended the match while the player was already gone --
+        // so the delayed restore found a null player, never teleported them
+        // out, and left their dropped kit lying in the arena.
+        plugin.getMatchManager().handleQuit(event.getPlayer());
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onCommand(PlayerCommandPreprocessEvent event) {
         Player player = event.getPlayer();
 
-        if (plugin.getMatchManager().getMatch(player) == null) {
+        // Practice/FFA players were previously unrestricted, so they could
+        // run /pv, /ec or any other storage command while wearing a free kit.
+        boolean inMatch = plugin.getMatchManager().getMatch(player) != null;
+        boolean inFfa = plugin.getMatchManager().isPublicFfa(player);
+
+        if (!inMatch && !inFfa) {
             return;
         }
 
-        String command = event.getMessage().toLowerCase();
+        String command = event.getMessage().toLowerCase().trim();
+        java.util.List<String> allowed =
+                plugin.getConfig().getStringList("security.allowed-commands");
 
-        if (command.startsWith("/pvp leave") ||
-                command.startsWith("/pvp forfeit") ||
-                command.startsWith("/pvp stats") ||
-                command.startsWith("/pvp help")) {
-            return;
+        if (allowed.isEmpty()) {
+            allowed = java.util.Arrays.asList(
+                    "/pvp leave", "/pvp forfeit", "/pvp stats", "/pvp help");
+        }
+
+        for (String entry : allowed) {
+            if (entry == null) {
+                continue;
+            }
+
+            String value = entry.toLowerCase().trim();
+
+            if (value.length() == 0) {
+                continue;
+            }
+
+            if (command.equals(value) || command.startsWith(value + " ")) {
+                return;
+            }
         }
 
         event.setCancelled(true);
-        player.sendMessage(plugin.color("&cCommands are blocked during matches. Use /pvp forfeit to leave."));
+        player.sendMessage(plugin.color("&cThat command is blocked while you are in a StarryPvP arena. Use &f/pvp leave&c."));
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)

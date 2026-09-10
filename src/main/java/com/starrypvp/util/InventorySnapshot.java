@@ -79,6 +79,7 @@ public final class InventorySnapshot {
         player.getInventory().setArmorContents(new ItemStack[4]);
         player.getInventory().setContents(cloneItems(contents));
         player.getInventory().setArmorContents(cloneItems(armor));
+        KitTag.purge(player);
         player.setGameMode(gameMode);
         player.setAllowFlight(allowFlight);
 
@@ -108,7 +109,11 @@ public final class InventorySnapshot {
         }
 
         if (location != null && location.getWorld() != null) {
-            player.teleport(location);
+            try {
+                location.getWorld().loadChunk(location.getBlockX() >> 4, location.getBlockZ() >> 4);
+                player.teleport(location);
+            } catch (Throwable ignored) {
+            }
         }
 
         player.updateInventory();
