@@ -1125,6 +1125,31 @@ public final class MatchManager {
         }
     }
 
+    public boolean canDamage(Player attacker, Player victim) {
+        if (frozen.contains(attacker.getUniqueId()) || frozen.contains(victim.getUniqueId())) {
+            return false;
+        }
+
+        boolean attackerFfa = publicFfa.contains(attacker.getUniqueId());
+        boolean victimFfa = publicFfa.contains(victim.getUniqueId());
+
+        // Practice FFA players are sealed off from the rest of the server:
+        // they carry a free kit, so they must not be able to touch, or be
+        // touched by, anyone outside the arena.
+        if (attackerFfa || victimFfa) {
+            return attackerFfa && victimFfa;
+        }
+
+        Match first = matchesByPlayer.get(attacker.getUniqueId());
+        Match second = matchesByPlayer.get(victim.getUniqueId());
+
+        if (first == null || first != second) {
+            return false;
+        }
+
+        return !first.sameTeam(attacker.getUniqueId(), victim.getUniqueId());
+    }
+
     public void eliminate(Player player) {
         Match match = matchesByPlayer.get(player.getUniqueId());
         if (match == null || match.isEnded()) {
@@ -1719,7 +1744,7 @@ public final class MatchManager {
 
     /**
      * True whenever the player is holding plugin-issued gear or is inside an
-     * arena in any capacity. Used by every anti-dupe check.
+     * arena in any capacity. Used by every anti-dupe check
      */
     public boolean isProtected(Player player) {
         return matchesByPlayer.containsKey(player.getUniqueId())
