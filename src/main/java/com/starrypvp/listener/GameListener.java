@@ -104,6 +104,22 @@ public final class GameListener implements Listener {
         }
     }
 
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onDamageRecord(EntityDamageByEntityEvent event) {
+        if (!(event.getEntity() instanceof Player)) {
+            return;
+        }
+
+        Player victim = (Player) event.getEntity();
+        Player attacker = resolveAttacker(event.getDamager());
+
+        if (attacker == null) {
+            return;
+        }
+
+        plugin.getMatchManager().recordDamage(attacker, victim, event.getFinalDamage());
+    }
+
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onAnyDamage(EntityDamageEvent event) {
         if (event.getEntity() instanceof Player &&

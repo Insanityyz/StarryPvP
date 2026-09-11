@@ -24,6 +24,29 @@ queue:
 arena-protection:
   radius: 150.0
 
+arena-zones:
+  enabled: true
+  check-interval-ticks: 20
+  warning-seconds: 5
+  exit-confirmation-seconds: 20
+  allow-ops: true
+  allow-spectators: true
+  teleport:
+    max-radius: 5000
+    min-radius: 300
+    max-attempts: 40
+    scan-from-y: 256
+    scan-to-y: 1
+    fall-immunity-seconds: 8
+  zones:
+    Saharena:
+      arena: Saharena
+      world: ""
+      radius: 150.0
+      y-min: -1
+      y-max: 256
+      whitelist: []
+
 combat:
   legacy-attack-speed-default: true
   custom-knockback-default: true

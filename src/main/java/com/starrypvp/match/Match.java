@@ -31,6 +31,8 @@ public final class Match {
     private final Set<UUID> spectators = new LinkedHashSet<UUID>();
     private final Map<UUID, InventorySnapshot> snapshots = new LinkedHashMap<UUID, InventorySnapshot>();
     private final Map<UUID, Integer> kills = new LinkedHashMap<UUID, Integer>();
+    private final Map<UUID, Double> damageDealt = new LinkedHashMap<UUID, Double>();
+    private final Map<UUID, Double> damageTaken = new LinkedHashMap<UUID, Double>();
     private final Map<UUID, EventColor> colors = new LinkedHashMap<UUID, EventColor>();
     private final long startedAt = System.currentTimeMillis();
     private boolean directDamage;
@@ -127,6 +129,28 @@ public final class Match {
     public int getKills(UUID uuid) {
         Integer current = kills.get(uuid);
         return current == null ? 0 : current.intValue();
+    }
+
+    public void addDamage(UUID dealer, UUID victim, double amount) {
+        if (dealer == null || victim == null || amount <= 0.0D) {
+            return;
+        }
+
+        Double dealt = damageDealt.get(dealer);
+        damageDealt.put(dealer, Double.valueOf(dealt == null ? amount : dealt.doubleValue() + amount));
+
+        Double taken = damageTaken.get(victim);
+        damageTaken.put(victim, Double.valueOf(taken == null ? amount : taken.doubleValue() + amount));
+    }
+
+    public double getDamageDealt(UUID uuid) {
+        Double value = damageDealt.get(uuid);
+        return value == null ? 0.0D : value.doubleValue();
+    }
+
+    public double getDamageTaken(UUID uuid) {
+        Double value = damageTaken.get(uuid);
+        return value == null ? 0.0D : value.doubleValue();
     }
 
     public EventColor getColor(UUID uuid) {

@@ -12,6 +12,8 @@ import com.starrypvp.match.MatchManager;
 import com.starrypvp.party.PartyManager;
 import com.starrypvp.queue.QueueManager;
 import com.starrypvp.arena.ArenaProtectionManager;
+import com.starrypvp.arena.ArenaZoneManager;
+import com.starrypvp.command.ZoneCommand;
 import com.starrypvp.data.RecoveryManager;
 import org.bukkit.ChatColor;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -30,6 +32,7 @@ public final class StarryPvP extends JavaPlugin {
     private MenuGui menuGui;
     private RecoveryManager recoveryManager;
     private ArenaProtectionManager arenaProtectionManager;
+    private ArenaZoneManager arenaZoneManager;
     private EventFfaManager eventFfaManager;
     private YamlConfiguration messages;
     private File messagesFile;
@@ -46,6 +49,7 @@ public final class StarryPvP extends JavaPlugin {
         recoveryManager = new RecoveryManager(this);
         arenaProtectionManager = new ArenaProtectionManager(this);
         matchManager = new MatchManager(this);
+        arenaZoneManager = new ArenaZoneManager(this);
         queueManager = new QueueManager(this);
         setupGui = new SetupGui(this);
         menuGui = new MenuGui(this);
@@ -54,18 +58,24 @@ public final class StarryPvP extends JavaPlugin {
         PvpCommand command = new PvpCommand(this);
         getCommand("pvp").setExecutor(command);
         getCommand("pvp").setTabCompleter(command);
+        getCommand("starryzone").setExecutor(new ZoneCommand(this));
 
         getServer().getPluginManager().registerEvents(setupGui, this);
         getServer().getPluginManager().registerEvents(menuGui, this);
         getServer().getPluginManager().registerEvents(recoveryManager, this);
         getServer().getPluginManager().registerEvents(arenaProtectionManager, this);
+        getServer().getPluginManager().registerEvents(arenaZoneManager, this);
         getServer().getPluginManager().registerEvents(new GameListener(this), this);
         getServer().getPluginManager().registerEvents(new AntiDupeListener(this), this);
         recoveryManager.restoreOnlinePlayers();
+        arenaZoneManager.start();
         eventFfaManager.start();
     }
 
     public void onDisable() {
+        if (arenaZoneManager != null) {
+            arenaZoneManager.stop();
+        }
         if (eventFfaManager != null) {
             eventFfaManager.stop();
         }
@@ -93,6 +103,10 @@ public final class StarryPvP extends JavaPlugin {
         messages = YamlConfiguration.loadConfiguration(messagesFile);
         if (arenaManager != null) {
             arenaManager.reload();
+        }
+        if (arenaZoneManager != null) {
+            arenaZoneManager.load();
+            arenaZoneManager.start();
         }
         if (eventFfaManager != null) {
             eventFfaManager.start();
@@ -151,6 +165,10 @@ public final class StarryPvP extends JavaPlugin {
 
     public ArenaProtectionManager getArenaProtectionManager() {
         return arenaProtectionManager;
+    }
+
+    public ArenaZoneManager getArenaZoneManager() {
+        return arenaZoneManager;
     }
 
     public EventFfaManager getEventFfaManager() {

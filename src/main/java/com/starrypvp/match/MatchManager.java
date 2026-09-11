@@ -787,6 +787,28 @@ public final class MatchManager {
         }
     }
 
+    public void recordDamage(Player attacker, Player victim, double amount) {
+        if (attacker == null || victim == null || amount <= 0.0D) {
+            return;
+        }
+
+        if (attacker.getUniqueId().equals(victim.getUniqueId())) {
+            return;
+        }
+
+        Match match = matchesByPlayer.get(victim.getUniqueId());
+
+        if (match == null || match != matchesByPlayer.get(attacker.getUniqueId()) || match.isEnded()) {
+            return;
+        }
+
+        if (match.sameTeam(attacker.getUniqueId(), victim.getUniqueId())) {
+            return;
+        }
+
+        match.addDamage(attacker.getUniqueId(), victim.getUniqueId(), amount);
+    }
+
     private void startMatchTimer(final Match match) {
         int configured = plugin.getConfig().getInt("match.maximum-duration-seconds", 300);
 
@@ -839,9 +861,43 @@ public final class MatchManager {
 
         broadcastToMatch(match, plugin.color("&eTime is up!"));
 
+        if (match.getType() != Match.Type.CUSTOM_FFA) {
+            boolean redAlive = !match.remainingRed().isEmpty();
+            boolean blueAlive = !match.remainingBlue().isEmpty();
+
+            if (redAlive != blueAlive) {
+                endMatch(match, redAlive ? match.getRed() : match.getBlue(), true);
+                return;
+            }
+
+            double redTaken = sideDamageTaken(match, match.getRed());
+            double blueTaken = sideDamageTaken(match, match.getBlue());
+
+            broadcastToMatch(match, plugin.color("&7Damage taken: &c" + formatDamage(redTaken)
+                    + " &7- &9" + formatDamage(blueTaken)));
+
+            if (redTaken != blueTaken) {
+                endMatch(match, redTaken < blueTaken ? match.getRed() : match.getBlue(), true);
+                return;
+            }
+
+            double redHealth = sideHealth(match.remainingRed());
+            double blueHealth = sideHealth(match.remainingBlue());
+
+            if (redHealth == blueHealth) {
+                broadcastToMatch(match, plugin.color("&7It was a draw."));
+                endMatch(match, Collections.<UUID>emptySet(), false);
+                return;
+            }
+
+            endMatch(match, redHealth > blueHealth ? match.getRed() : match.getBlue(), true);
+            return;
+        }
+
         Set<UUID> best = new java.util.LinkedHashSet<UUID>();
+        double bestTaken = -1.0D;
+        double bestDealt = -1.0D;
         int bestKills = -1;
-        double bestHealth = -1.0D;
 
         for (UUID uuid : match.getAlive()) {
             Player player = Bukkit.getPlayer(uuid);
@@ -850,15 +906,27 @@ public final class MatchManager {
                 continue;
             }
 
+            double taken = match.getDamageTaken(uuid);
+            double dealt = match.getDamageDealt(uuid);
             int kills = match.getKills(uuid);
-            double health = player.getHealth();
 
-            if (kills > bestKills || (kills == bestKills && health > bestHealth)) {
+            if (best.isEmpty()) {
+                bestTaken = taken;
+                bestDealt = dealt;
                 bestKills = kills;
-                bestHealth = health;
+                best.add(uuid);
+                continue;
+            }
+
+            if (taken < bestTaken
+                    || (taken == bestTaken && dealt > bestDealt)
+                    || (taken == bestTaken && dealt == bestDealt && kills > bestKills)) {
+                bestTaken = taken;
+                bestDealt = dealt;
+                bestKills = kills;
                 best.clear();
                 best.add(uuid);
-            } else if (kills == bestKills && health == bestHealth) {
+            } else if (taken == bestTaken && dealt == bestDealt && kills == bestKills) {
                 best.add(uuid);
             }
         }
@@ -869,14 +937,35 @@ public final class MatchManager {
             return;
         }
 
-        if (match.getType() != Match.Type.CUSTOM_FFA) {
-            UUID leader = best.iterator().next();
-            Set<UUID> side = match.getRed().contains(leader) ? match.getRed() : match.getBlue();
-            endMatch(match, side, true);
-            return;
+        endMatch(match, best, true);
+    }
+
+    private double sideDamageTaken(Match match, Collection<UUID> side) {
+        double total = 0.0D;
+
+        for (UUID uuid : side) {
+            total += match.getDamageTaken(uuid);
         }
 
-        endMatch(match, best, true);
+        return total;
+    }
+
+    private double sideHealth(Collection<UUID> side) {
+        double total = 0.0D;
+
+        for (UUID uuid : side) {
+            Player player = Bukkit.getPlayer(uuid);
+
+            if (player != null) {
+                total += player.getHealth();
+            }
+        }
+
+        return total;
+    }
+
+    private String formatDamage(double value) {
+        return String.valueOf(Math.round(value * 10.0D) / 10.0D);
     }
 
     private boolean isInsideArena(Location location, Arena arena) {
@@ -1236,6 +1325,14 @@ public final class MatchManager {
         clearMatchTeams(match);
         cancelMatchTimer(match);
 
+        for (UUID participantId : match.getParticipants()) {
+            Player participant = Bukkit.getPlayer(participantId);
+
+            if (participant != null) {
+                plugin.getArenaZoneManager().beginExitConfirmation(participant);
+            }
+        }
+
         for (UUID spectatorId : new java.util.HashSet<UUID>(match.getSpectators())) {
             Player spectator = Bukkit.getPlayer(spectatorId);
 
@@ -1370,6 +1467,7 @@ public final class MatchManager {
                     KitTag.purge(player);
                     CombatUtil.restoreAttackSpeed(player);
                     ensureOutsideArena(player, match.getArena());
+                    plugin.getArenaZoneManager().confirmExit(player);
                     plugin.getRecoveryManager().remove(uuid);
                     player.setScoreboard(Bukkit.getScoreboardManager().getMainScoreboard());
                 }
